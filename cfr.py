@@ -133,18 +133,43 @@ class CFRTrainer:
                 avg_regret = self._compute_avg_regret()
                 print(f"  Iter {t}/{num_iterations} | "
                       f"Info sets: {len(self.regret_sum)} | "
-                      f"Avg regret: {avg_regret:.4f}")
+                      f"Avg regret: {avg_regret:.7f}")
 
         print(f"Training complete. {len(self.regret_sum)} info sets.")
 
+    # def _compute_avg_regret(self):
+    #     if not self.regret_sum:
+    #         return 0.0
+        
+    #     total = sum(np.abs(r).mean() for r in self.regret_sum.values())
+    #     avg = total / len(self.regret_sum)
+    #     if self.use_linear_cfr and self.iteration > 0:
+    #         avg /= self.iteration
+    #     return avg
+
     def _compute_avg_regret(self):
-        if not self.regret_sum:
+        if not self.regret_sum or self.iteration == 0:
             return 0.0
-        total = sum(np.abs(r).mean() for r in self.regret_sum.values())
-        avg = total / len(self.regret_sum)
-        if self.use_linear_cfr and self.iteration > 0:
-            avg /= self.iteration
-        return avg
+
+        # 1. Calculate the correct denominator (sum of weights)
+        # For standard CFR, this is T. For Linear CFR, it is the sum of 1 to T.
+        if self.use_linear_cfr:
+            # Sum of arithmetic series: T(T+1)/2
+            sum_weights = (self.iteration * (self.iteration + 1)) / 2
+        else:
+            sum_weights = self.iteration
+
+        # 2. Calculate average positive regret
+        # CFR minimizes the positive part of regret; negative values indicate 
+        # actions we already know are bad and shouldn't inflate our average.
+        total_positive_regret = 0.0
+        for regrets in self.regret_sum.values():
+            # Use the mean of positive regrets across actions for this info set
+            total_positive_regret += np.maximum(regrets, 0).mean()
+
+        # 3. Normalize by both the number of info sets and the cumulative weight
+        avg_regret = (total_positive_regret / len(self.regret_sum)) / sum_weights
+        return avg_regret
 
     def get_all_strategies(self):
         strategies = {}
