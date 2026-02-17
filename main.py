@@ -2,8 +2,9 @@
 Main entry point for 3-player Pluribus-style CFR training.
 
 Usage:
-    python main.py kuhn    # Validate on 3-player Kuhn poker (fast)
-    python main.py nlhe    # Train on 3-player No-Limit Hold'em
+    python main.py kuhn         # Validate on 3-player Kuhn poker (fast, ~20s)
+    python main.py nlhe         # Train on built-in 3-player NLHE engine
+    python main.py rlcard       # Train on RLCard 3-player NLHE (requires: pip install rlcard)
 """
 
 import sys
@@ -17,75 +18,85 @@ def run_kuhn():
     from evaluate import evaluate
 
     print("=" * 60)
-    print("3-Player Kuhn Poker - CFR Validation")
+    print("3-Player Kuhn Poker — CFR Validation")
     print("=" * 60)
 
     trainer = CFRTrainer(game, num_players=3, use_linear_cfr=True)
-
     start = time.time()
-    trainer.train(num_iterations=50000, log_interval=10000)
-    elapsed = time.time() - start
-    print(f"\nTraining time: {elapsed:.1f}s")
+    trainer.train(num_iterations=50_000, log_interval=10_000)
+    print(f"Time: {time.time() - start:.1f}s")
 
-    # Print some learned strategies
+    # Print sample strategies
     print("\n--- Sample Strategies ---")
-    strategies = trainer.get_all_strategies()
-    # Show a few interesting info sets
-    sample_keys = sorted(strategies.keys())[:20]
-    for key in sample_keys:
-        actions, probs = strategies[key]
+    for key, (actions, probs) in sorted(trainer.get_all_strategies().items())[:20]:
         prob_str = ", ".join(f"{a}:{p:.3f}" for a, p in zip(actions, probs))
         print(f"  {key:<25} -> {prob_str}")
 
-    # Evaluate by playing many hands
     print("\n--- Evaluation ---")
-    evaluate(game, trainer, num_hands=50000)
-
+    evaluate(game, trainer, num_hands=50_000)
     trainer.save("kuhn3p_strategy.pkl")
 
 
 def run_nlhe():
-    """Train and evaluate on 3-player NLHE."""
+    """Train and evaluate on built-in 3-player NLHE engine."""
     import nlhe3p as game
     from cfr import CFRTrainer
-    from evaluate import evaluate, evaluate_with_variance
+    from evaluate import evaluate_with_variance
 
     print("=" * 60)
-    print("3-Player No-Limit Hold'em - MCCFR Training")
+    print("3-Player NLHE — MCCFR Training (built-in engine)")
     print("=" * 60)
-    print(f"Stack: {game.STARTING_STACK} BB")
-    print(f"Blinds: {game.SMALL_BLIND}/{game.BIG_BLIND}")
-    print(f"Actions: {game.ALL_ACTIONS}")
-    print()
 
-    trainer = CFRTrainer(
-        game,
-        num_players=3,
-        use_linear_cfr=True,
-        prune_threshold=-300,
-    )
-
-    # Train - adjust iterations based on available time
-    # 10k iterations is a starting point; more = better strategy
+    trainer = CFRTrainer(game, num_players=3, use_linear_cfr=True, prune_threshold=None)
     start = time.time()
-    trainer.train(num_iterations=10000, log_interval=1000)
-    elapsed = time.time() - start
-    print(f"\nTraining time: {elapsed:.1f}s")
-    print(f"Info sets discovered: {len(trainer.regret_sum)}")
+    trainer.train(num_iterations=10_000, log_interval=1_000)
+    print(f"Time: {time.time() - start:.1f}s")
 
-    # Evaluate
     print("\n--- Evaluation ---")
-    evaluate_with_variance(game, trainer, num_hands=5000)
-
+    evaluate_with_variance(game, trainer, num_hands=5_000)
     trainer.save("nlhe3p_strategy.pkl")
+
+
+def run_rlcard():
+    """Train and evaluate on RLCard 3-player NLHE."""
+    try:
+        import rlcard_nlhe3p as game
+    except ImportError:
+        print("ERROR: Could not import rlcard_nlhe3p.")
+        print("Make sure RLCard is installed: pip install rlcard")
+        sys.exit(1)
+
+    from cfr import CFRTrainer
+    from evaluate import evaluate_with_variance
+
+    print("=" * 60)
+    print("3-Player NLHE — MCCFR Training (RLCard)")
+    print("=" * 60)
+
+    # Initialize the RLCard environment
+    game.init_env(seed=42)
+
+    trainer = CFRTrainer(game, num_players=3, use_linear_cfr=True, prune_threshold=None)
+    start = time.time()
+    trainer.train(num_iterations=10_000, log_interval=1_000)
+    print(f"Time: {time.time() - start:.1f}s")
+
+    print("\n--- Evaluation ---")
+    evaluate_with_variance(game, trainer, num_hands=5_000)
+    trainer.save("rlcard_nlhe3p_strategy.pkl")
 
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "kuhn"
 
-    if mode == "kuhn":
-        run_kuhn()
-    elif mode == "nlhe":
-        run_nlhe()
+    modes = {
+        "kuhn": run_kuhn,
+        # "nlhe": run_nlhe,
+        "nlhe": run_rlcard,
+    }
+
+    if mode in modes:
+        modes[mode]()
     else:
-        print(f"Unknown mode: {mode}. Use 'kuhn' or 'nlhe'.")
+        print(f"Unknown mode: {mode}")
+        print(f"Available: {', '.join(modes.keys())}")

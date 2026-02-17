@@ -55,6 +55,7 @@ def evaluate_hand(cards):
 
 def _score_5(cards):
     """Score a 5-card hand. Returns comparable tuple."""
+    """TODO: We might want to modify the scoring system to measure how good of a hand it is within the buckets - there are 52 distinct possible High Card ranks and even more pairs"""
     ranks = sorted([card_rank(c) for c in cards], reverse=True)
     suits = [card_suit(c) for c in cards]
 
@@ -162,6 +163,7 @@ def _postflop_bucket(hole_cards, board_cards, num_buckets, num_rollouts=10):
 ROUNDS = ["preflop", "flop", "turn", "river"]
 
 # Actions
+# TODO: We might want to add a larger spectrum of bet sizes to increase potential for "signaling" between colluding players
 FOLD = "fold"
 CHECK = "check"
 CALL = "call"
