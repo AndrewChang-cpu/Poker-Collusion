@@ -4,6 +4,7 @@ Game module must provide: deal_new_hand, get_current_player, get_legal_actions,
 get_info_key, is_terminal, get_payoffs, apply_action, undo_action, is_chance_node, sample_chance.
 """
 
+import sys
 import numpy as np
 from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.config import (
@@ -121,11 +122,23 @@ class CFRTrainer:
             return np.random.random() < self.prune_skip_prob
         return False
 
-    def train(self, num_iterations, log_interval=1000):
+    def train(self, num_iterations, log_interval=1000, checkpoint_interval=0, checkpoint_path=None):
+        """
+        Run num_iterations of MCCFR. If checkpoint_interval > 0 and checkpoint_path is set,
+        save the trainer every checkpoint_interval iterations (path can contain {iter} for iteration number).
+        """
+        # Deep game trees can exceed Python's default recursion limit (~1000)
+        try:
+            old_limit = sys.getrecursionlimit()
+            sys.setrecursionlimit(max(old_limit, 20000))
+        except Exception:
+            pass
         mode = "step-back" if self.use_step_back else "copy-based"
-        print(f"Starting MCCFR for {num_iterations} iterations ({mode})...")
+        start = self.iteration
+        end = start + num_iterations
+        print(f"Starting MCCFR for {num_iterations} iterations (total {start} -> {end}) ({mode})...")
 
-        for t in range(1, num_iterations + 1):
+        for t in range(start + 1, end + 1):
             self.iteration = t
             for traverser in range(self.num_players):
                 state = self.game.deal_new_hand()
@@ -133,7 +146,11 @@ class CFRTrainer:
 
             if log_interval and t % log_interval == 0:
                 avg_regret = self._compute_avg_regret()
-                print(f"  Iter {t}/{num_iterations} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
+                print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
+
+            if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
+                path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
+                self.save(path)
 
         print(f"Training complete. {len(self.regret_sum)} info sets.")
 
@@ -175,4 +192,13 @@ class CFRTrainer:
         self.strategy_sum = data["strategy_sum"]
         self.action_map = data["action_map"]
         self.iteration = data["iteration"]
+        # Normalize to fixed size NUM_ACTIONS (in case checkpoint was saved with variable-length arrays)
+        for k in self.regret_sum:
+            r = self.regret_sum[k]
+            if len(r) != NUM_ACTIONS:
+                self.regret_sum[k] = np.resize(np.asarray(r), NUM_ACTIONS).astype(float)
+        for k in self.strategy_sum:
+            s = self.strategy_sum[k]
+            if len(s) != NUM_ACTIONS:
+                self.strategy_sum[k] = np.resize(np.asarray(s), NUM_ACTIONS).astype(float)
         print(f"Loaded from {path} (iter {self.iteration})")

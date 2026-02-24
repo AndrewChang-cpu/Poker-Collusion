@@ -42,6 +42,13 @@ python scripts/build_buckets.py --postflop-samples 5000 --postflop-rollouts 200
 # 2. Train blueprint
 python scripts/train.py --iterations 10000 --out output/blueprint.pkl
 
+# Optional: save a checkpoint every N iterations (e.g. every 2000)
+python scripts/train.py --iterations 10000 --out output/blueprint.pkl --checkpoint-every 2000
+# Writes output/blueprint_2000.pkl, output/blueprint_4000.pkl, ... and final to output/blueprint.pkl
+
+# Optional: resume from a saved strategy (runs --iterations more, then overwrites --out)
+python scripts/train.py --load output/blueprint.pkl --iterations 5000 --out output/blueprint.pkl
+
 # 3. Evaluate
 python scripts/evaluate.py --strategy output/blueprint.pkl --hands 50000
 ```

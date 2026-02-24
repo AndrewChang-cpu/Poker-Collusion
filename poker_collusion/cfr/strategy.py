@@ -11,6 +11,8 @@ def regret_matching(regret_sum, num_actions):
     positive_regret[a] = max(regret_sum[a], 0); then normalize.
     If sum(positive) == 0, return uniform.
     """
+    if num_actions <= 0:
+        return np.array([])
     regrets = np.asarray(regret_sum) if len(regret_sum) >= num_actions else np.zeros(num_actions)
     if len(regrets) < num_actions:
         regrets = np.resize(regrets, num_actions)
