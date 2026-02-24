@@ -2,3 +2,4 @@ venv/
 __pycache__/
 kuhn3p_strategy.pkl
 nlhe3p_strategy.pkl
+.cursor/
