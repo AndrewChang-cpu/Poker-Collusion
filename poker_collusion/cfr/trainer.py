@@ -58,13 +58,16 @@ class CFRTrainer:
             return get_average_strategy(s_sub, len(legal_actions))
         return get_average_strategy(s, NUM_ACTIONS)
 
-    def cfr_traverse(self, state, traverser):
+    def cfr_traverse(self, state, traverser, depth=0):
+        if depth > 500:
+            hist = getattr(state, "action_history", [])
+            print(f"[CFR] depth={depth} (possible non-termination or very long hand) | action_history={hist}")
         if self.game.is_terminal(state):
             return self.game.get_payoffs(state)[traverser]
 
         if self.game.is_chance_node(state):
             new_state = self.game.sample_chance(state)
-            return self.cfr_traverse(new_state, traverser)
+            return self.cfr_traverse(new_state, traverser, depth + 1)
 
         player = self.game.get_current_player(state)
         actions = self.game.get_legal_actions(state)
@@ -86,7 +89,7 @@ class CFRTrainer:
                     values[i] = 0.0
                     continue
                 self.game.apply_action(state, action)
-                values[i] = self.cfr_traverse(state, traverser)
+                values[i] = self.cfr_traverse(state, traverser, depth + 1)
                 if self.use_step_back:
                     self.game.undo_action()
 
@@ -108,7 +111,7 @@ class CFRTrainer:
         else:
             action_idx = np.random.choice(num_actions, p=strategy)
             self.game.apply_action(state, actions[action_idx])
-            val = self.cfr_traverse(state, traverser)
+            val = self.cfr_traverse(state, traverser, depth + 1)
             if self.use_step_back:
                 self.game.undo_action()
             return val
@@ -146,7 +149,7 @@ class CFRTrainer:
 
             if log_interval and t % log_interval == 0:
                 avg_regret = self._compute_avg_regret()
-                print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
+                print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
 
             if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
                 path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
