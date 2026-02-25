@@ -132,7 +132,7 @@ class CFRTrainer:
             return np.random.random() < self.prune_skip_prob
         return False
 
-    def train(self, num_iterations, log_interval=1000, checkpoint_interval=0, checkpoint_path=None):
+    def train(self, num_iterations, log_interval=100, checkpoint_interval=0, checkpoint_path=None):
         """
         Run num_iterations of MCCFR. If checkpoint_interval > 0 and checkpoint_path is set,
         save the trainer every checkpoint_interval iterations (path can contain {iter} for iteration number).
@@ -154,10 +154,11 @@ class CFRTrainer:
                 state = self.game.deal_new_hand()
                 self.cfr_traverse(state, traverser)
 
-            if log_interval and t % log_interval == 0:
+            if (log_interval and t % log_interval == 0):
                 avg_regret = self._compute_avg_regret()
-                pass #The below line isn't working since CFRTrainer currently has no attribute "_max_depth_seen"
-                #print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
+                print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
+                #The below line isn't working since CFRTrainer currently has no attribute "_max_depth_seen"
+                # print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
 
             if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
                 path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
@@ -193,7 +194,7 @@ class CFRTrainer:
                 "action_map": self.action_map,
                 "iteration": self.iteration,
             }, f)
-        print(f"Saved to {path}")
+        print(f"\nSaved to {path}")
 
     def load(self, path):
         import pickle
