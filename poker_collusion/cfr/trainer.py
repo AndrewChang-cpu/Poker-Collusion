@@ -6,6 +6,7 @@ get_info_key, is_terminal, get_payoffs, apply_action, undo_action, is_chance_nod
 
 import sys
 import numpy as np
+from tqdm import tqdm
 from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.config import (
     NUM_ACTIONS,
@@ -58,10 +59,16 @@ class CFRTrainer:
             return get_average_strategy(s_sub, len(legal_actions))
         return get_average_strategy(s, NUM_ACTIONS)
 
-    def cfr_traverse(self, state, traverser, depth=0):
-        if depth > 500:
+    def cfr_traverse(self, state, traverser, depth=0, depth_limit=500):
+        # We might want to fix the bug that results in an infinite loop at some point but for now I set a max depth limit that aborts the round if reached
+        if depth==depth_limit//2:
             hist = getattr(state, "action_history", [])
             print(f"[CFR] depth={depth} (possible non-termination or very long hand) | action_history={hist}")
+        if depth > depth_limit:
+            hist = getattr(state, "action_history", [])
+            print(f"[CFR] Depth limit of {depth_limit} reached; ROUND ABORTED. History: {hist}")
+            return 0.0 # Return 0 to avoid biasing model with junk data
+    
         if self.game.is_terminal(state):
             return self.game.get_payoffs(state)[traverser]
 
@@ -141,7 +148,7 @@ class CFRTrainer:
         end = start + num_iterations
         print(f"Starting MCCFR for {num_iterations} iterations (total {start} -> {end}) ({mode})...")
 
-        for t in range(start + 1, end + 1):
+        for t in tqdm(range(start + 1, end + 1),"Training..."):
             self.iteration = t
             for traverser in range(self.num_players):
                 state = self.game.deal_new_hand()
@@ -149,7 +156,8 @@ class CFRTrainer:
 
             if log_interval and t % log_interval == 0:
                 avg_regret = self._compute_avg_regret()
-                print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
+                pass #The below line isn't working since CFRTrainer currently has no attribute "_max_depth_seen"
+                #print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
 
             if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
                 path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
