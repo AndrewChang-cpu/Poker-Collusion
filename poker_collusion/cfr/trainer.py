@@ -8,6 +8,7 @@ import sys
 import traceback
 import json
 import numpy as np
+from tqdm import tqdm
 from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.config import (
     NUM_ACTIONS,
@@ -71,11 +72,21 @@ class CFRTrainer:
             return get_average_strategy(s_sub, len(legal_actions))
         return get_average_strategy(s, NUM_ACTIONS)
 
-    def cfr_traverse(self, state, traverser, depth=0):
+    def cfr_traverse(self, state, traverser, depth=0, depth_limit=500):
         try:
             print(depth, [f'{snapshot['stacks']} {snapshot['pot']}' for snapshot in state.undo_stack])
         except:
             print('EXCEPTION:', state.undo_stack[-1])
+        
+        # We might want to fix the bug that results in an infinite loop at some point but for now I set a max depth limit that aborts the round if reached
+        if depth==depth_limit//2:
+            hist = getattr(state, "action_history", [])
+            print(f"[CFR] depth={depth} (possible non-termination or very long hand) | action_history={hist}")
+        if depth > depth_limit:
+            hist = getattr(state, "action_history", [])
+            print(f"[CFR] Depth limit of {depth_limit} reached; ROUND ABORTED. History: {hist}")
+            return 0.0 # Return 0 to avoid biasing model with junk data
+    
         if self.game.is_terminal(state):
             entry = {"trainingIteration": self.iteration, "message": "terminal_reached", "data": {"depth": depth, "action_history": state.action_history, "traverser": traverser, "payoffs": self.game.get_payoffs(state)}}
             write_to_debug(entry)
@@ -142,7 +153,7 @@ class CFRTrainer:
             return np.random.random() < self.prune_skip_prob
         return False
 
-    def train(self, num_iterations, log_interval=1000, checkpoint_interval=0, checkpoint_path=None):
+    def train(self, num_iterations, log_interval=1, checkpoint_interval=0, checkpoint_path=None):
         """
         Run num_iterations of MCCFR. If checkpoint_interval > 0 and checkpoint_path is set,
         save the trainer every checkpoint_interval iterations (path can contain {iter} for iteration number).
@@ -160,7 +171,7 @@ class CFRTrainer:
         print(f"Starting MCCFR for {num_iterations} iterations (total {start} -> {end}) ({mode})...")
 
         try:
-            for t in range(start + 1, end + 1):
+            for t in tqdm(range(start + 1, end + 1),"Training..."):
                 self.iteration = t
                 for traverser in range(self.num_players):
                     state = self.game.deal_new_hand()
@@ -169,10 +180,12 @@ class CFRTrainer:
                 if log_interval and t % log_interval == 0:
                     avg_regret = self._compute_avg_regret()
                     print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
+                    #The below line isn't working since CFRTrainer currently has no attribute "_max_depth_seen"
+                    # print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
 
-                if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
-                    path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
-                    self.save(path)
+                    if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
+                        path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
+                        self.save(path)
         except RecursionError:
             with open(_CFR_ERROR_LOG, "w") as f:
                 f.write("RecursionError in CFR train()\n\n")
@@ -214,7 +227,7 @@ class CFRTrainer:
                 "action_map": self.action_map,
                 "iteration": self.iteration,
             }, f)
-        print(f"Saved to {path}")
+        print(f"\nSaved to {path}")
 
     def load(self, path):
         import pickle

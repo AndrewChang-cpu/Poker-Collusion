@@ -3,6 +3,7 @@ Self-play evaluation: mbb/g and block bootstrap standard error.
 """
 
 import numpy as np
+from tqdm import tqdm
 from poker_collusion.config import NUM_PLAYERS, EVAL_BLOCK_SIZE
 
 
@@ -57,7 +58,7 @@ def evaluate_with_variance(
     current_block = np.zeros(num_players)
     hands_in_block = 0
 
-    for _ in range(num_hands):
+    for _ in tqdm(range(num_hands),"Evaluating..."):
         current_block += np.array(play_hand(game, trainer, num_players))
         hands_in_block += 1
         if hands_in_block >= block_size:

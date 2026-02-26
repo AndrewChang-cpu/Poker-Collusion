@@ -190,7 +190,7 @@ class CFRTrainer:
         }
         with open(path, "wb") as f:
             pickle.dump(data, f)
-        print(f"Saved to {path}")
+        print(f"\nSaved to {path}")
 
     def load(self, path):
         import pickle
