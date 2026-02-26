@@ -73,10 +73,11 @@ class CFRTrainer:
         return get_average_strategy(s, NUM_ACTIONS)
 
     def cfr_traverse(self, state, traverser, depth=0, depth_limit=500):
+        assert depth == len(state.action_history), f"Depth {depth} does not match action history length {len(state.action_history)}"
         try:
             print(depth, [f'{snapshot['stacks']} {snapshot['pot']}' for snapshot in state.undo_stack])
         except:
-            print('EXCEPTION:', state.undo_stack[-1])
+            print('EXCEPTION:', state.undo_stack)
         
         # We might want to fix the bug that results in an infinite loop at some point but for now I set a max depth limit that aborts the round if reached
         if depth==depth_limit//2:
@@ -95,7 +96,7 @@ class CFRTrainer:
 
         if self.game.is_chance_node(state):
             new_state = self.game.sample_chance(state)
-            return self.cfr_traverse(new_state, traverser, depth + 1)
+            return self.cfr_traverse(new_state, traverser, len(new_state.action_history))
 
         player = self.game.get_current_player(state)
         actions = self.game.get_legal_actions(state)
@@ -117,7 +118,7 @@ class CFRTrainer:
                     values[i] = 0.0
                     continue
                 self.game.apply_action(state, action)
-                values[i] = self.cfr_traverse(state, traverser, depth + 1)
+                values[i] = self.cfr_traverse(state, traverser, len(state.action_history))
                 # if self.use_step_back:
                 self.game.undo_action()
 
@@ -139,7 +140,7 @@ class CFRTrainer:
         else:
             action_idx = np.random.choice(num_actions, p=strategy)
             self.game.apply_action(state, actions[action_idx])
-            val = self.cfr_traverse(state, traverser, depth + 1)
+            val = self.cfr_traverse(state, traverser, len(state.action_history))
             # if self.use_step_back:
             self.game.undo_action()
             return val
