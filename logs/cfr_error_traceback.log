@@ -1,0 +1,25 @@
+Exception in CFR train()
+
+Traceback (most recent call last):
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 164, in train
+    self.cfr_traverse(state, traverser)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 128, in cfr_traverse
+    val = self.cfr_traverse(state, traverser, depth + 1)
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 106, in cfr_traverse
+    values[i] = self.cfr_traverse(state, traverser, depth + 1)
+                ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 128, in cfr_traverse
+    val = self.cfr_traverse(state, traverser, depth + 1)
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 128, in cfr_traverse
+    val = self.cfr_traverse(state, traverser, depth + 1)
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 106, in cfr_traverse
+    values[i] = self.cfr_traverse(state, traverser, depth + 1)
+                ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 84, in cfr_traverse
+    return self.cfr_traverse(new_state, traverser, depth + 1)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/aechang/Documents/Coding/Poker-Collusion/poker_collusion/cfr/trainer.py", line 75, in cfr_traverse
+    print(depth, [f'{snapshot['stacks']} {snapshot['pot']}' for snapshot in state.undo_stack])
+                     ~~~~~~~~^^^^^^^^^^
+TypeError: tuple indices must be integers or slices, not str

@@ -42,10 +42,14 @@ def sample_chance(state):
     state.action_history.append(DEAL)
     state.round_idx += 1
     state.chance_pending = False
-    state.undo_stack.append(("DEAL", n, list(state.bets), state.last_raiser, state.last_raise_amount))
+    state.undo_stack.append(("DEAL", n, list(state.bets), state.last_raiser, state.last_raise_amount)) # TODO: BUGGY
     state.bets = [0.0] * NUM_PLAYERS
     state.last_raiser = -1
     state.last_raise_amount = 0.0
+    # Past river or board already full -> resolve; no further decision nodes
+    if state.round_idx > 3 or len(state.board) >= 5:
+        _resolve_hand(state)
+        return state
     # First to act postflop: P1, then P2, then P0
     for offset in range(1, NUM_PLAYERS + 1):
         p = (offset) % NUM_PLAYERS
@@ -115,6 +119,7 @@ def undo_action(state=None):
         for _ in range(n):
             state.board.pop()
         state.chance_pending = True
+        state.done = False
         state.current_player = -1
         if len(top) >= 5:
             state.bets = list(top[2])
