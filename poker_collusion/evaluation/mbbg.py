@@ -1,8 +1,12 @@
 """
 Self-play evaluation: mbb/g and block bootstrap standard error.
+Supports parallel execution via multiprocessing.
 """
 
 import numpy as np
+import multiprocessing
+import os
+import time
 from tqdm import tqdm
 from poker_collusion.config import NUM_PLAYERS, EVAL_BLOCK_SIZE
 from poker_collusion.evaluation.amateur_policy import AmateurPolicy
@@ -65,18 +69,54 @@ def play_hand_with_policies(game, policies, num_players=NUM_PLAYERS):
     return game.get_payoffs(state)
 
 
-def evaluate(game, trainer, num_hands=10000, num_players=NUM_PLAYERS):
-    """
-    Run evaluation; return (avg_payoffs, mbb_per_game) per player.
-    mbb/g = (avg profit per hand in BB) * 1000.
-    """
-    total_payoffs = np.zeros(num_players)
-    for _ in range(num_hands):
-        total_payoffs += play_hand(game, trainer, num_players)
-    avg_payoffs = total_payoffs / num_hands
-    mbb_per_game = avg_payoffs * 1000
-    return avg_payoffs, mbb_per_game
+# --- Parallel Worker Helpers ---
 
+def _run_batch_play(args):
+    """Worker function for self-play evaluation."""
+    game, trainer, num_hands, num_players, seed = args
+    np.random.seed(seed)
+    batch_results = []
+    for _ in range(num_hands):
+        batch_results.append(play_hand(game, trainer, num_players))
+    return batch_results
+
+
+def _run_batch_policies(args):
+    """Worker function for vs-policy evaluation."""
+    game, policies, num_hands, num_players, seed = args
+    np.random.seed(seed)
+    batch_results = []
+    for _ in range(num_hands):
+        batch_results.append(play_hand_with_policies(game, policies, num_players))
+    return batch_results
+
+
+def _collect_parallel_results(num_hands, num_processes, worker_fn, worker_args_base):
+    """Generic orchestrator for multiprocessing evaluation."""
+    if num_processes < 1:
+        num_processes = multiprocessing.cpu_count()
+    
+    # Batch size of 500 prevents excessive IPC overhead
+    batch_size = 500
+    num_batches = (num_hands + batch_size - 1) // batch_size
+    
+    tasks = []
+    for i in range(num_batches):
+        hands_in_batch = min(batch_size, num_hands - i * batch_size)
+        # Unique seed for every batch
+        seed = int(time.time() * 1000) % 2**32 + i + os.getpid()
+        tasks.append(worker_args_base + (hands_in_batch, NUM_PLAYERS, seed))
+        
+    all_payoffs = []
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        for batch_result in tqdm(pool.imap_unordered(worker_fn, tasks), 
+                                total=num_batches, desc="Parallel Eval"):
+            all_payoffs.extend(batch_result)
+            
+    return np.array(all_payoffs)
+
+
+# --- Public Evaluation API ---
 
 def evaluate_with_variance(
     game,
@@ -84,25 +124,31 @@ def evaluate_with_variance(
     num_hands=10000,
     num_players=NUM_PLAYERS,
     block_size=EVAL_BLOCK_SIZE,
+    num_processes=1
 ):
     """
     Evaluate with block bootstrap standard error and 95% CI.
-    Returns (mbb_mean, mbb_se) arrays.
+    Supports parallel execution.
     """
+    if num_processes > 1:
+        all_payoffs = _collect_parallel_results(num_hands, num_processes, _run_batch_play, (game, trainer))
+    else:
+        all_payoffs = []
+        for _ in tqdm(range(num_hands), "Evaluating..."):
+            all_payoffs.append(play_hand(game, trainer, num_players))
+        all_payoffs = np.array(all_payoffs)
+
+    # Apply block bootstrapping to the results
     block_payoffs = []
-    current_block = np.zeros(num_players)
-    hands_in_block = 0
-
-    for _ in tqdm(range(num_hands),"Evaluating..."):
-        current_block += np.array(play_hand(game, trainer, num_players))
-        hands_in_block += 1
-        if hands_in_block >= block_size:
-            block_payoffs.append(current_block / hands_in_block)
-            current_block = np.zeros(num_players)
-            hands_in_block = 0
-
-    if hands_in_block > 0:
-        block_payoffs.append(current_block / hands_in_block)
+    num_blocks = len(all_payoffs) // block_size
+    for i in range(num_blocks):
+        block = all_payoffs[i*block_size : (i+1)*block_size]
+        block_payoffs.append(np.mean(block, axis=0))
+    
+    # Handle remaining hands
+    if len(all_payoffs) % block_size != 0:
+        remaining = all_payoffs[num_blocks*block_size:]
+        block_payoffs.append(np.mean(remaining, axis=0))
 
     block_payoffs = np.array(block_payoffs)
     mean = block_payoffs.mean(axis=0)
@@ -129,31 +175,34 @@ def evaluate_vs_amateur(
     cfr_seat=0,
     block_size=EVAL_BLOCK_SIZE,
     amateur=None,
+    num_processes=1
 ):
     """
-    Evaluate CFR (trainer) vs amateur policy. CFR plays in cfr_seat; others play amateur.
-    With rotation, run this for cfr_seat=0,1,2 and average CFR mbb/g.
-    Returns (mbb_mean, mbb_se) arrays; prints per-player and, if rotating, CFR average.
+    Evaluate CFR (trainer) vs amateur policy. Supports parallel execution.
     """
     if amateur is None:
         amateur = AmateurPolicy()
     policies = [amateur] * num_players
     policies[cfr_seat] = trainer
 
+    if num_processes > 1:
+        all_payoffs = _collect_parallel_results(num_hands, num_processes, _run_batch_policies, (game, policies))
+    else:
+        all_payoffs = []
+        for _ in tqdm(range(num_hands), desc="Evaluating vs amateur..."):
+            all_payoffs.append(play_hand_with_policies(game, policies, num_players))
+        all_payoffs = np.array(all_payoffs)
+
+    # Apply block bootstrapping
     block_payoffs = []
-    current_block = np.zeros(num_players)
-    hands_in_block = 0
-
-    for _ in tqdm(range(num_hands), desc="Evaluating vs amateur..."):
-        current_block += np.array(play_hand_with_policies(game, policies, num_players))
-        hands_in_block += 1
-        if hands_in_block >= block_size:
-            block_payoffs.append(current_block / hands_in_block)
-            current_block = np.zeros(num_players)
-            hands_in_block = 0
-
-    if hands_in_block > 0:
-        block_payoffs.append(current_block / hands_in_block)
+    num_blocks = len(all_payoffs) // block_size
+    for i in range(num_blocks):
+        block = all_payoffs[i*block_size : (i+1)*block_size]
+        block_payoffs.append(np.mean(block, axis=0))
+    
+    if len(all_payoffs) % block_size != 0:
+        remaining = all_payoffs[num_blocks*block_size:]
+        block_payoffs.append(np.mean(remaining, axis=0))
 
     block_payoffs = np.array(block_payoffs)
     mean = block_payoffs.mean(axis=0)
@@ -181,9 +230,10 @@ def evaluate_vs_amateur_rotate(
     num_players=NUM_PLAYERS,
     block_size=EVAL_BLOCK_SIZE,
     amateur=None,
+    num_processes=1
 ):
     """
-    Run evaluate_vs_amateur for cfr_seat=0,1,2 (BTN, SB, BB). Report per-seat and average CFR mbb/g.
+    Run evaluate_vs_amateur for cfr_seat=0,1,2 (BTN, SB, BB). Supports parallel execution.
     """
     if amateur is None:
         amateur = AmateurPolicy()
@@ -198,6 +248,7 @@ def evaluate_vs_amateur_rotate(
             cfr_seat=cfr_seat,
             block_size=block_size,
             amateur=amateur,
+            num_processes=num_processes
         )
         cfr_mbb.append(mbb_mean[cfr_seat])
         cfr_se.append(mbb_se[cfr_seat])

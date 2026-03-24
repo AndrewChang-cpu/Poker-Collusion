@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """
 Run MCCFR training and save blueprint strategy.
-
-Usage:
-  python scripts/train.py --iterations 10000 --out output/blueprint.pkl
-  python scripts/train.py --load output/blueprint.pkl --iterations 5000   # run 5k more iters, append to same file
-  python scripts/train.py --iterations 10000 --checkpoint-every 2000 --out output/blueprint_{iter}.pkl
+Supports parallelization via --processes.
 """
 
 import os
 import sys
 import time
 import argparse
+import multiprocessing
+import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -36,14 +34,13 @@ from poker_collusion.config import (
     LOG_INTERVAL,
     USE_LINEAR_CFR,
     PRUNE_THRESHOLD,
-    PRUNE_WARM_UP_ITERATIONS,
+    PRUNE_WAR_UP_ITERATIONS,
     PRUNE_SKIP_PROBABILITY,
     EVAL_HANDS_DEFAULT,
     NUM_PLAYERS,
 )
 
 
-# Game module interface for CFR (env is the module)
 class GameModule:
     deal_new_hand = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
@@ -57,63 +54,116 @@ class GameModule:
     sample_chance = staticmethod(sample_chance)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="MCCFR training; optionally resume from --load and/or checkpoint with --checkpoint-every")
-    ap.add_argument("--iterations", "-n", type=int, default=T_MAX_DEFAULT, help="Training iterations (additional if --load)")
-    ap.add_argument("--log-interval", type=int, default=LOG_INTERVAL)
-    ap.add_argument("--out", "-o", default="output/blueprint.pkl", help="Output path for final strategy")
-    ap.add_argument("--load", "-l", default=None, help="Load existing strategy and continue training (run --iterations more)")
-    ap.add_argument("--checkpoint-every", type=int, default=0, metavar="N", help="Save checkpoint every N iterations; --out can use {iter}")
-    ap.add_argument("--no-prune", action="store_true", help="Disable regret pruning")
-    ap.add_argument("--eval-hands", type=int, default=EVAL_HANDS_DEFAULT, help="Hands for post-training eval")
-    args = ap.parse_args()
-
+def _parallel_train_worker(args):
+    """Independent worker running a subset of iterations."""
+    num_iterations, load_path, seed, worker_id = args
+    np.random.seed(seed)
+    
     game = GameModule()
     trainer = CFRTrainer(
         game,
         num_players=NUM_PLAYERS,
         use_linear_cfr=USE_LINEAR_CFR,
+        prune_threshold=PRUNE_THRESHOLD,
+        prune_warm_up=PRUNE_WAR_UP_ITERATIONS,
+        prune_skip_prob=PRUNE_SKIP_PROBABILITY,
+    )
+
+    if load_path:
+        trainer.load(load_path)
+
+    # Workers don't show individual progress bars to avoid overlapping output
+    trainer.train(num_iterations=num_iterations, log_interval=0, show_progress=False)
+    
+    return {
+        "regret_sum": trainer.regret_sum,
+        "strategy_sum": trainer.strategy_sum,
+        "action_map": trainer.action_map,
+        "iteration": trainer.iteration
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--iterations", "-n", type=int, default=T_MAX_DEFAULT)
+    ap.add_argument("--log-interval", type=int, default=LOG_INTERVAL)
+    ap.add_argument("--out", "-o", default="output/blueprint.pkl")
+    ap.add_argument("--load", "-l", default=None)
+    ap.add_argument("--checkpoint-every", type=int, default=0)
+    ap.add_argument("--no-prune", action="store_true")
+    ap.add_argument("--eval-hands", type=int, default=EVAL_HANDS_DEFAULT)
+    ap.add_argument("--processes", "-j", type=int, default=1, help="Number of parallel processes")
+    args = ap.parse_args()
+
+    game = GameModule()
+    main_trainer = CFRTrainer(
+        game,
+        num_players=NUM_PLAYERS,
+        use_linear_cfr=USE_LINEAR_CFR,
         prune_threshold=None if args.no_prune else PRUNE_THRESHOLD,
-        prune_warm_up=PRUNE_WARM_UP_ITERATIONS,
+        prune_warm_up=PRUNE_WAR_UP_ITERATIONS,
         prune_skip_prob=PRUNE_SKIP_PROBABILITY,
     )
 
     if args.load:
-        load_path = os.path.join(ROOT, args.load)
-        if not os.path.isfile(load_path):
-            print(f"Error: not found: {load_path}")
-            sys.exit(1)
-        trainer.load(load_path)
-        print(f"Resuming from iter {trainer.iteration}; will run {args.iterations} more iterations.")
+        main_trainer.load(os.path.join(ROOT, args.load))
+
+    print("=" * 60)
+    print(f"3-Player NLHE — MCCFR Training (Processes: {args.processes})")
+    print("=" * 60)
+
+    start_time = time.time()
+
+    if args.processes > 1:
+        iters_per_proc = args.iterations // args.processes
+        rem = args.iterations % args.processes
+        
+        worker_tasks = []
+        for i in range(args.processes):
+            n = iters_per_proc + (rem if i == 0 else 0)
+            seed = int(time.time() * 1000) % 2**32 + i
+            worker_tasks.append((n, args.load, seed, i))
+            
+        with multiprocessing.Pool(processes=args.processes) as pool:
+            print(f"Dispatching {args.iterations} iterations across {args.processes} workers...")
+            results = pool.map(_parallel_train_worker, worker_tasks)
+            
+        print("\nMerging results...")
+        baseline_iter = main_trainer.iteration
+        
+        # Reset main trainer sums to start averaging
+        main_trainer.regret_sum = {}
+        main_trainer.strategy_sum = {}
+        
+        for res in results:
+            temp = CFRTrainer(game)
+            temp.regret_sum = res["regret_sum"]
+            temp.strategy_sum = res["strategy_sum"]
+            temp.action_map = res["action_map"]
+            main_trainer.merge(temp)
+            
+        # Average the sums across workers
+        for key in main_trainer.regret_sum:
+            main_trainer.regret_sum[key] /= args.processes
+        for key in main_trainer.strategy_sum:
+            main_trainer.strategy_sum[key] /= args.processes
+            
+        main_trainer.iteration = baseline_iter + args.iterations
     else:
-        print("Starting from scratch.")
+        main_trainer.train(
+            num_iterations=args.iterations,
+            log_interval=args.log_interval,
+            checkpoint_interval=args.checkpoint_every,
+            checkpoint_path=args.out
+        )
 
-    print("=" * 60)
-    print("3-Player NLHE — MCCFR Blueprint Training")
-    print("=" * 60)
-
+    print(f"Time: {time.time() - start_time:.1f}s")
     out_path = os.path.join(ROOT, args.out)
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    checkpoint_path = out_path if args.checkpoint_every else None
-    if args.checkpoint_every and "{iter}" not in out_path:
-        base, ext = os.path.splitext(out_path)
-        checkpoint_path = f"{base}_{{iter}}{ext}"
-
-    start = time.time()
-    trainer.train(
-        num_iterations=args.iterations,
-        log_interval=args.log_interval,
-        checkpoint_interval=args.checkpoint_every,
-        checkpoint_path=checkpoint_path,
-    )
-    elapsed = time.time() - start
-    print(f"Time: {elapsed:.1f}s")
-
-    trainer.save(out_path)
+    main_trainer.save(out_path)
 
     if args.eval_hands > 0:
         print("\n--- Evaluation ---")
-        evaluate_with_variance(game, trainer, num_hands=args.eval_hands)
+        evaluate_with_variance(game, main_trainer, num_hands=args.eval_hands, num_processes=args.processes)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
 Load blueprint and evaluate mbb/g with block bootstrap SE.
-Usage:
-  python scripts/evaluate.py [--strategy output/blueprint.pkl] [--hands 50000]
-  python scripts/evaluate.py --vs-amateur --strategy output/blueprint.pkl --hands 10000
-  python scripts/evaluate.py --vs-amateur --rotate --hands 10000   # CFR in BTN/SB/BB, report average
+Now supports parallelized evaluation with --processes.
 """
 
 import os
@@ -59,6 +56,8 @@ def main():
                     help="Seat for CFR when using --vs-amateur (0=BTN, 1=SB, 2=BB)")
     ap.add_argument("--rotate", action="store_true",
                     help="With --vs-amateur: run CFR in all three seats and report average (button/SB/BB rotation)")
+    ap.add_argument("--processes", "-j", type=int, default=1, 
+                    help="Number of processes for evaluation (default 1)")
     args = ap.parse_args()
 
     path = os.path.join(ROOT, args.strategy)
@@ -72,7 +71,7 @@ def main():
 
     if args.vs_amateur:
         print("=" * 60)
-        print("CFR vs Amateur Evaluation")
+        print(f"CFR vs Amateur Evaluation (Parallel: {args.processes} cores)")
         print("=" * 60)
         if args.rotate:
             evaluate_vs_amateur_rotate(
@@ -80,6 +79,7 @@ def main():
                 trainer,
                 num_hands_per_seat=args.hands,
                 block_size=args.block_size,
+                num_processes=args.processes
             )
         else:
             evaluate_vs_amateur(
@@ -88,16 +88,18 @@ def main():
                 num_hands=args.hands,
                 cfr_seat=args.cfr_seat,
                 block_size=args.block_size,
+                num_processes=args.processes
             )
     else:
         print("=" * 60)
-        print("Blueprint Evaluation (self-play)")
+        print(f"Blueprint Evaluation (self-play, Parallel: {args.processes} cores)")
         print("=" * 60)
         evaluate_with_variance(
             game,
             trainer,
             num_hands=args.hands,
             block_size=args.block_size,
+            num_processes=args.processes
         )
 
 
