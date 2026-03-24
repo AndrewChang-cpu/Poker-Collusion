@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Run MCCFR training and save blueprint strategy.
-Supports parallelization via --processes.
+Supports parallelization via --processes with a smooth tqdm progress bar.
 """
 
 import os
@@ -10,6 +10,7 @@ import time
 import argparse
 import multiprocessing
 import numpy as np
+from tqdm import tqdm
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -34,7 +35,7 @@ from poker_collusion.config import (
     LOG_INTERVAL,
     USE_LINEAR_CFR,
     PRUNE_THRESHOLD,
-    PRUNE_WAR_UP_ITERATIONS,
+    PRUNE_WARM_UP_ITERATIONS,
     PRUNE_SKIP_PROBABILITY,
     EVAL_HANDS_DEFAULT,
     NUM_PLAYERS,
@@ -55,8 +56,8 @@ class GameModule:
 
 
 def _parallel_train_worker(args):
-    """Independent worker running a subset of iterations."""
-    num_iterations, load_path, seed, worker_id = args
+    """Independent worker running a chunk of iterations."""
+    num_iterations, load_path, seed = args
     np.random.seed(seed)
     
     game = GameModule()
@@ -65,21 +66,21 @@ def _parallel_train_worker(args):
         num_players=NUM_PLAYERS,
         use_linear_cfr=USE_LINEAR_CFR,
         prune_threshold=PRUNE_THRESHOLD,
-        prune_warm_up=PRUNE_WAR_UP_ITERATIONS,
+        prune_warm_up=PRUNE_WARM_UP_ITERATIONS,
         prune_skip_prob=PRUNE_SKIP_PROBABILITY,
     )
 
     if load_path:
         trainer.load(load_path)
 
-    # Workers don't show individual progress bars to avoid overlapping output
+    # Run the assigned iterations for this chunk
     trainer.train(num_iterations=num_iterations, log_interval=0, show_progress=False)
     
     return {
         "regret_sum": trainer.regret_sum,
         "strategy_sum": trainer.strategy_sum,
         "action_map": trainer.action_map,
-        "iteration": trainer.iteration
+        "iteration": num_iterations # Return how many it contributed
     }
 
 
@@ -101,55 +102,67 @@ def main():
         num_players=NUM_PLAYERS,
         use_linear_cfr=USE_LINEAR_CFR,
         prune_threshold=None if args.no_prune else PRUNE_THRESHOLD,
-        prune_warm_up=PRUNE_WAR_UP_ITERATIONS,
+        prune_warm_up=PRUNE_WARM_UP_ITERATIONS,
         prune_skip_prob=PRUNE_SKIP_PROBABILITY,
     )
 
+    # Prepare initial baseline if loading
+    baseline_iter = 0
     if args.load:
-        main_trainer.load(os.path.join(ROOT, args.load))
+        load_full_path = os.path.join(ROOT, args.load)
+        main_trainer.load(load_full_path)
+        baseline_iter = main_trainer.iteration
 
     print("=" * 60)
-    print(f"3-Player NLHE — MCCFR Training (Processes: {args.processes})")
+    print(f"3-Player NLHE — Parallel MCCFR Training")
+    print(f"Cores: {args.processes} | Total Iterations: {args.iterations}")
     print("=" * 60)
 
     start_time = time.time()
 
     if args.processes > 1:
-        iters_per_proc = args.iterations // args.processes
-        rem = args.iterations % args.processes
+        # Divide total iterations into chunks to show progress
+        # 100 chunks provides a smooth bar without too much communication overhead
+        num_chunks = max(args.processes, 100)
+        iters_per_chunk = args.iterations // num_chunks
         
         worker_tasks = []
-        for i in range(args.processes):
-            n = iters_per_proc + (rem if i == 0 else 0)
+        for i in range(num_chunks):
+            # The last chunk gets any remainder
+            n = iters_per_chunk if i < num_chunks - 1 else args.iterations - (iters_per_chunk * (num_chunks - 1))
             seed = int(time.time() * 1000) % 2**32 + i
-            worker_tasks.append((n, args.load, seed, i))
+            worker_tasks.append((n, args.load, seed))
             
+        all_results = []
         with multiprocessing.Pool(processes=args.processes) as pool:
-            print(f"Dispatching {args.iterations} iterations across {args.processes} workers...")
-            results = pool.map(_parallel_train_worker, worker_tasks)
+            # imap_unordered allows the tqdm bar to update as soon as ANY chunk finishes
+            pbar = tqdm(total=args.iterations, desc="Parallel Training", unit="iter")
+            for result in pool.imap_unordered(_parallel_train_worker, worker_tasks):
+                all_results.append(result)
+                pbar.update(result["iteration"])
+            pbar.close()
             
-        print("\nMerging results...")
-        baseline_iter = main_trainer.iteration
-        
-        # Reset main trainer sums to start averaging
+        print("\nMerging and Averaging results...")
+        # Reset main trainer sums to aggregate worker data
         main_trainer.regret_sum = {}
         main_trainer.strategy_sum = {}
         
-        for res in results:
+        for res in all_results:
             temp = CFRTrainer(game)
             temp.regret_sum = res["regret_sum"]
             temp.strategy_sum = res["strategy_sum"]
             temp.action_map = res["action_map"]
             main_trainer.merge(temp)
             
-        # Average the sums across workers
+        # Divide by num_chunks to get the average across all independent samples
         for key in main_trainer.regret_sum:
-            main_trainer.regret_sum[key] /= args.processes
+            main_trainer.regret_sum[key] /= num_chunks
         for key in main_trainer.strategy_sum:
-            main_trainer.strategy_sum[key] /= args.processes
+            main_trainer.strategy_sum[key] /= num_chunks
             
         main_trainer.iteration = baseline_iter + args.iterations
     else:
+        # Standard sequential training
         main_trainer.train(
             num_iterations=args.iterations,
             log_interval=args.log_interval,
@@ -157,12 +170,12 @@ def main():
             checkpoint_path=args.out
         )
 
-    print(f"Time: {time.time() - start_time:.1f}s")
+    print(f"Total Time: {time.time() - start_time:.1f}s")
     out_path = os.path.join(ROOT, args.out)
     main_trainer.save(out_path)
 
     if args.eval_hands > 0:
-        print("\n--- Evaluation ---")
+        print("\n--- Final Evaluation ---")
         evaluate_with_variance(game, main_trainer, num_hands=args.eval_hands, num_processes=args.processes)
 
 

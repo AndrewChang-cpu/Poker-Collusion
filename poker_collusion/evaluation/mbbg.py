@@ -118,6 +118,24 @@ def _collect_parallel_results(num_hands, num_processes, worker_fn, worker_args_b
 
 # --- Public Evaluation API ---
 
+def evaluate(game, trainer, num_hands=10000, num_players=NUM_PLAYERS, num_processes=1):
+    """
+    Run basic evaluation; return (avg_payoffs, mbb_per_game) per player.
+    mbb/g = (avg profit per hand in BB) * 1000.
+    """
+    if num_processes > 1:
+        all_payoffs = _collect_parallel_results(num_hands, num_processes, _run_batch_play, (game, trainer))
+    else:
+        all_payoffs = []
+        for _ in range(num_hands):
+            all_payoffs.append(play_hand(game, trainer, num_players))
+        all_payoffs = np.array(all_payoffs)
+        
+    avg_payoffs = np.mean(all_payoffs, axis=0)
+    mbb_per_game = avg_payoffs * 1000
+    return avg_payoffs, mbb_per_game
+
+
 def evaluate_with_variance(
     game,
     trainer,

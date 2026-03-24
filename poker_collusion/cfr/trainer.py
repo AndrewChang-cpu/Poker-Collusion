@@ -3,11 +3,15 @@ MCCFR trainer: external sampling, Linear CFR, regret pruning.
 Game module must provide: deal_new_hand, get_current_player, get_legal_actions,
 get_info_key, is_terminal, get_payoffs, apply_action, undo_action, is_chance_node, sample_chance.
 """
+"""
+MCCFR trainer: external sampling, Linear CFR, regret pruning.
+"""
 
 import sys
 import traceback
 import json
 import numpy as np
+import os
 from tqdm import tqdm
 from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.config import (
@@ -16,6 +20,7 @@ from poker_collusion.config import (
     PRUNE_WARM_UP_ITERATIONS,
     PRUNE_SKIP_PROBABILITY,
 )
+
 
 # Debug: full traceback and NDJSON logs (used by train() and cfr_traverse)
 _CFR_ERROR_LOG = "logs/cfr_error_traceback.log"
@@ -221,4 +226,4 @@ class CFRTrainer:
         self.strategy_sum = data["strategy_sum"]
         self.action_map = data["action_map"]
         self.iteration = data["iteration"]
-        print(f"Loaded from {path} (iter {self.iteration})")
+        #print(f"Loaded from {path} (iter {self.iteration})")
