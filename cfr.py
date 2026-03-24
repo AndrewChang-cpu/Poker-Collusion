@@ -200,4 +200,4 @@ class CFRTrainer:
         self.strategy_sum = data["strategy_sum"]
         self.action_map = data["action_map"]
         self.iteration = data["iteration"]
-        print(f"Loaded from {path} (iter {self.iteration})")
+        #print(f"Loaded from {path} (iter {self.iteration})")

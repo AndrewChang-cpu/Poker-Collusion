@@ -53,8 +53,8 @@ python scripts/train.py --load output/blueprint.pkl --iterations 5000 --out outp
 python scripts/evaluate.py --strategy output/blueprint.pkl --hands 50000
 
 # Matt's note to self: Parallelization
-python scripts/train.py --load output/blueprint_20000_mkwee.pkl --iterations 100 --processes 8 --out output/blueprint.pkl
-
+python scripts/train.py --load output/blueprint_20000_mkwee.pkl --iterations 10000 --processes 8 --out output/blueprint.pkl --checkpoint-every 500
+python scripts/evaluate.py --strategy output/blueprint.pkl --processes 8 --hands 50000
 
 
 ```
