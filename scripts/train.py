@@ -66,6 +66,13 @@ def main():
     ap.add_argument("--checkpoint-every", type=int, default=0, metavar="N", help="Save checkpoint every N iterations; --out can use {iter}")
     ap.add_argument("--no-prune", action="store_true", help="Disable regret pruning")
     ap.add_argument("--eval-hands", type=int, default=EVAL_HANDS_DEFAULT, help="Hands for post-training eval")
+    ap.add_argument("--debug", action="store_true", help="Print detailed per-node debug output during traversal")
+    ap.add_argument("--step", action="store_true", help="Pause at each traverser node (implies --debug)")
+    ap.add_argument(
+        "--debug-stream",
+        action="store_true",
+        help="Stream chance/terminal/RESULT lines as they occur (legacy); default is one recap chart per traversal",
+    )
     args = ap.parse_args()
 
     game = GameModule()
@@ -76,6 +83,9 @@ def main():
         prune_threshold=None if args.no_prune else PRUNE_THRESHOLD,
         prune_warm_up=PRUNE_WARM_UP_ITERATIONS,
         prune_skip_prob=PRUNE_SKIP_PROBABILITY,
+        debug=args.debug or args.step,
+        debug_step=args.step,
+        debug_consolidate=not args.debug_stream,
     )
 
     if args.load:
