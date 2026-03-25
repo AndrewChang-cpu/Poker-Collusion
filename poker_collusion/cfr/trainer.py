@@ -3,11 +3,15 @@ MCCFR trainer: external sampling, Linear CFR, regret pruning.
 Game module must provide: deal_new_hand, get_current_player, get_legal_actions,
 get_info_key, is_terminal, get_payoffs, apply_action, undo_action, is_chance_node, sample_chance.
 """
+"""
+MCCFR trainer: external sampling, Linear CFR, regret pruning.
+"""
 
 import sys
 import traceback
 import json
 import numpy as np
+import os
 from tqdm import tqdm
 from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.config import (
@@ -17,9 +21,10 @@ from poker_collusion.config import (
     PRUNE_SKIP_PROBABILITY,
 )
 
+
 # Debug: full traceback and NDJSON logs (used by train() and cfr_traverse)
-_CFR_ERROR_LOG = "/Users/aechang/Documents/Coding/Poker-Collusion/logs/cfr_error_traceback.log"
-_DEBUG_LOG = "/Users/aechang/Documents/Coding/Poker-Collusion/logs/debug.log"
+_CFR_ERROR_LOG = "logs/cfr_error_traceback.log"
+_DEBUG_LOG = "logs/debug.log"
 
 
 def write_to_debug(entry):
@@ -45,7 +50,6 @@ class CFRTrainer:
         self.prune_threshold = prune_threshold
         self.prune_warm_up = prune_warm_up
         self.prune_skip_prob = prune_skip_prob
-        # self.use_step_back = hasattr(game_module, "undo_action") and callable(getattr(game_module, "undo_action", None))
 
         self.regret_sum = {}
         self.strategy_sum = {}
@@ -73,25 +77,10 @@ class CFRTrainer:
         return get_average_strategy(s, NUM_ACTIONS)
 
     def cfr_traverse(self, state, traverser, depth=0, depth_limit=500):
-        assert depth == len(state.action_history), f"Depth {depth} does not match action history length {len(state.action_history)}"
-        try:
-            print(depth, [f'{snapshot['stacks']} {snapshot['pot']}' for snapshot in state.undo_stack])
-        except:
-            print('EXCEPTION:', state.undo_stack)
-        
-        # We might want to fix the bug that results in an infinite loop at some point but for now I set a max depth limit that aborts the round if reached
-        if depth==depth_limit//2:
-            hist = getattr(state, "action_history", [])
-            print(f"[CFR] depth={depth} (possible non-termination or very long hand) | action_history={hist}")
         if depth > depth_limit:
-            hist = getattr(state, "action_history", [])
-            print(f"[CFR] Depth limit of {depth_limit} reached; ROUND ABORTED. History: {hist}")
-            return 0.0 # Return 0 to avoid biasing model with junk data
+            return 0.0
     
         if self.game.is_terminal(state):
-            entry = {"trainingIteration": self.iteration, "message": "terminal_reached", "data": {"depth": depth, "action_history": state.action_history, "traverser": traverser, "payoffs": self.game.get_payoffs(state)}}
-            write_to_debug(entry)
-            # print(entry)
             return self.game.get_payoffs(state)[traverser]
 
         if self.game.is_chance_node(state):
@@ -119,7 +108,6 @@ class CFRTrainer:
                     continue
                 self.game.apply_action(state, action)
                 values[i] = self.cfr_traverse(state, traverser, len(state.action_history))
-                # if self.use_step_back:
                 self.game.undo_action()
 
             ev = float(strategy @ values)
@@ -141,12 +129,10 @@ class CFRTrainer:
             action_idx = np.random.choice(num_actions, p=strategy)
             self.game.apply_action(state, actions[action_idx])
             val = self.cfr_traverse(state, traverser, len(state.action_history))
-            # if self.use_step_back:
             self.game.undo_action()
             return val
 
     def _should_prune(self, info_key, action):
-        """action is the abstract action index (0..9)."""
         if self.prune_threshold is None or self.iteration <= self.prune_warm_up:
             return False
         regrets = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
@@ -154,59 +140,62 @@ class CFRTrainer:
             return np.random.random() < self.prune_skip_prob
         return False
 
-    def train(self, num_iterations, log_interval=1, checkpoint_interval=0, checkpoint_path=None):
-        """
-        Run num_iterations of MCCFR. If checkpoint_interval > 0 and checkpoint_path is set,
-        save the trainer every checkpoint_interval iterations (path can contain {iter} for iteration number).
-        """
-        # Deep game trees can exceed Python's default recursion limit (~1000)
-        # try:
-        #     old_limit = sys.getrecursionlimit()
-        #     sys.setrecursionlimit(max(old_limit, 20000))
-        # except Exception:
-        #     pass
-        # mode = "step-back" if self.use_step_back else "copy-based"
-        mode = "step-back"
+    def train(self, num_iterations, log_interval=1, checkpoint_interval=0, checkpoint_path=None, show_progress=True):
         start = self.iteration
         end = start + num_iterations
-        print(f"Starting MCCFR for {num_iterations} iterations (total {start} -> {end}) ({mode})...")
+        
+        iterator = range(start + 1, end + 1)
+        if show_progress:
+            iterator = tqdm(iterator, desc="Training...")
 
         try:
-            for t in tqdm(range(start + 1, end + 1),"Training..."):
+            for t in iterator:
                 self.iteration = t
                 for traverser in range(self.num_players):
                     state = self.game.deal_new_hand()
                     self.cfr_traverse(state, traverser)
 
-                if log_interval and t % log_interval == 0:
+                #if True:
+                if log_interval and t % log_interval == 0 and show_progress:
                     avg_regret = self._compute_avg_regret()
                     print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
-                    #The below line isn't working since CFRTrainer currently has no attribute "_max_depth_seen"
-                    # print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f} | max_depth: {self._max_depth_seen}")
 
                     if checkpoint_interval and checkpoint_path and t % checkpoint_interval == 0:
                         path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
                         self.save(path)
-        except RecursionError:
-            with open(_CFR_ERROR_LOG, "w") as f:
-                f.write("RecursionError in CFR train()\n\n")
-                f.write(traceback.format_exc())
-            raise
         except Exception:
-            with open(_CFR_ERROR_LOG, "w") as f:
-                f.write("Exception in CFR train()\n\n")
+            with open(_CFR_ERROR_LOG, "a") as f:
+                f.write(f"\nException at iteration {self.iteration}\n")
                 f.write(traceback.format_exc())
             raise
 
-        print(f"Training complete. {len(self.regret_sum)} info sets.")
+    def merge(self, other):
+        """Sum regrets and strategies from another trainer instance."""
+        for key, val in other.regret_sum.items():
+            if key in self.regret_sum:
+                # Resize if necessary to maintain consistency
+                if len(self.regret_sum[key]) < len(val):
+                    self.regret_sum[key] = np.resize(self.regret_sum[key], len(val))
+                self.regret_sum[key] += val[:len(self.regret_sum[key])]
+            else:
+                self.regret_sum[key] = val.copy()
+        
+        for key, val in other.strategy_sum.items():
+            if key in self.strategy_sum:
+                if len(self.strategy_sum[key]) < len(val):
+                    self.strategy_sum[key] = np.resize(self.strategy_sum[key], len(val))
+                self.strategy_sum[key] += val[:len(self.strategy_sum[key])]
+            else:
+                self.strategy_sum[key] = val.copy()
+        
+        for key, val in other.action_map.items():
+            if key not in self.action_map:
+                self.action_map[key] = val
 
     def _compute_avg_regret(self):
         if not self.regret_sum or self.iteration == 0:
             return 0.0
-        if self.use_linear_cfr:
-            sum_weights = (self.iteration * (self.iteration + 1)) / 2
-        else:
-            sum_weights = self.iteration
+        sum_weights = (self.iteration * (self.iteration + 1)) / 2 if self.use_linear_cfr else self.iteration
         total_pos = sum(np.maximum(regrets, 0).mean() for regrets in self.regret_sum.values())
         return (total_pos / len(self.regret_sum)) / sum_weights
 
@@ -221,6 +210,7 @@ class CFRTrainer:
 
     def save(self, path):
         import pickle
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "wb") as f:
             pickle.dump({
                 "regret_sum": self.regret_sum,
@@ -228,7 +218,6 @@ class CFRTrainer:
                 "action_map": self.action_map,
                 "iteration": self.iteration,
             }, f)
-        print(f"\nSaved to {path}")
 
     def load(self, path):
         import pickle
@@ -238,13 +227,4 @@ class CFRTrainer:
         self.strategy_sum = data["strategy_sum"]
         self.action_map = data["action_map"]
         self.iteration = data["iteration"]
-        # # Normalize to fixed size NUM_ACTIONS (in case checkpoint was saved with variable-length arrays)
-        # for k in self.regret_sum:
-        #     r = self.regret_sum[k]
-        #     if len(r) != NUM_ACTIONS:
-        #         self.regret_sum[k] = np.resize(np.asarray(r), NUM_ACTIONS).astype(float)
-        # for k in self.strategy_sum:
-        #     s = self.strategy_sum[k]
-        #     if len(s) != NUM_ACTIONS:
-        #         self.strategy_sum[k] = np.resize(np.asarray(s), NUM_ACTIONS).astype(float)
-        print(f"Loaded from {path} (iter {self.iteration})")
+        #print(f"Loaded from {path} (iter {self.iteration})")
