@@ -155,6 +155,7 @@ class CFRTrainer:
                     state = self.game.deal_new_hand()
                     self.cfr_traverse(state, traverser)
 
+                #if True:
                 if log_interval and t % log_interval == 0 and show_progress:
                     avg_regret = self._compute_avg_regret()
                     print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")

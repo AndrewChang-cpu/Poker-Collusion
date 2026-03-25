@@ -24,7 +24,7 @@ LOG_INTERVAL = 1_000
 USE_LINEAR_CFR = True
 PRUNE_THRESHOLD = -300
 PRUNE_WARM_UP_ITERATIONS = 100
-PRUNE_SKIP_PROBABILITY = 0.95
+PRUNE_SKIP_PROBABILITY = 0.99
 
 # Bucket table paths (relative to project root or data/)
 DEFAULT_BUCKET_DIR = "data"
@@ -34,5 +34,5 @@ TURN_BUCKETS_FILE = "turn_buckets.pkl"
 RIVER_BUCKETS_FILE = "river_buckets.pkl"
 
 # Evaluation
-EVAL_HANDS_DEFAULT = 50_000
+EVAL_HANDS_DEFAULT = 1 # Main: 50000
 EVAL_BLOCK_SIZE = 500
