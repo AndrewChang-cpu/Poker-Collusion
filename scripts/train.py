@@ -25,7 +25,6 @@ from poker_collusion.env import (
     is_terminal,
     get_payoffs,
     apply_action,
-    undo_action,
     is_chance_node,
     sample_chance,
 )
@@ -40,6 +39,8 @@ from poker_collusion.config import (
     PRUNE_SKIP_PROBABILITY,
     EVAL_HANDS_DEFAULT,
     NUM_PLAYERS,
+    PARALLEL_WORKERS,
+    PARALLEL_BATCH_SIZE,
 )
 
 
@@ -52,7 +53,6 @@ class GameModule:
     is_terminal = staticmethod(is_terminal)
     get_payoffs = staticmethod(get_payoffs)
     apply_action = staticmethod(apply_action)
-    undo_action = staticmethod(undo_action)
     is_chance_node = staticmethod(is_chance_node)
     sample_chance = staticmethod(sample_chance)
 
@@ -72,6 +72,20 @@ def main() -> None:
         "--debug-stream",
         action="store_true",
         help="Stream chance/terminal/RESULT lines as they occur (legacy); default is one recap chart per traversal",
+    )
+    ap.add_argument(
+        "--workers", "-w",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Worker threads for parallel training (>1 requires free-threaded Python with GIL disabled)",
+    )
+    ap.add_argument(
+        "--batch-size",
+        type=int,
+        default=PARALLEL_BATCH_SIZE,
+        metavar="N",
+        help=f"Traversals per logical iteration in parallel mode (default: {PARALLEL_BATCH_SIZE}, should be multiple of 3)",
     )
     args = ap.parse_args()
 
@@ -110,12 +124,25 @@ def main() -> None:
         checkpoint_path = f"{base}_{{iter}}{ext}"
 
     start = time.time()
-    trainer.train(
-        num_iterations=args.iterations,
-        log_interval=args.log_interval,
-        checkpoint_interval=args.checkpoint_every,
-        checkpoint_path=checkpoint_path,
-    )
+    if args.workers > 1:
+        if args.debug or args.step:
+            print("Error: --workers > 1 is incompatible with --debug/--step. Use --workers 1.")
+            sys.exit(1)
+        trainer.train_parallel(
+            num_iterations=args.iterations,
+            num_workers=args.workers,
+            batch_size=args.batch_size,
+            log_interval=args.log_interval,
+            checkpoint_interval=args.checkpoint_every,
+            checkpoint_path=checkpoint_path,
+        )
+    else:
+        trainer.train(
+            num_iterations=args.iterations,
+            log_interval=args.log_interval,
+            checkpoint_interval=args.checkpoint_every,
+            checkpoint_path=checkpoint_path,
+        )
     elapsed = time.time() - start
     print(f"Time: {elapsed:.1f}s")
 

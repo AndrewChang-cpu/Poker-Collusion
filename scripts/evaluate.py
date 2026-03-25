@@ -23,7 +23,6 @@ from poker_collusion.env import (
     is_terminal,
     get_payoffs,
     apply_action,
-    undo_action,
     is_chance_node,
     sample_chance,
 )
@@ -44,7 +43,6 @@ class GameModule:
     is_terminal = staticmethod(is_terminal)
     get_payoffs = staticmethod(get_payoffs)
     apply_action = staticmethod(apply_action)
-    undo_action = staticmethod(undo_action)
     is_chance_node = staticmethod(is_chance_node)
     sample_chance = staticmethod(sample_chance)
 

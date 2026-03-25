@@ -76,46 +76,15 @@ def _action_label(idx, round_idx):
     return f"Bet {pct}%pot"
 
 
-def _players_for_action_history(action_history):
-    """Replay on a fresh hand to recover who acted for each action (turn order is deterministic)."""
-    from poker_collusion.env.game_state import deal_new_hand
-    from poker_collusion.env.game_logic import (
-        apply_action,
-        get_current_player,
-        is_chance_node,
-        is_terminal,
-        sample_chance,
+def _history_str(action_history, actor_history):
+    """Render action_history as a readable string using actor_history for player labels."""
+    assert len(actor_history) == sum(1 for a in action_history if a != DEAL), (
+        f"actor_history length {len(actor_history)} does not match "
+        f"non-DEAL entries in action_history ({sum(1 for a in action_history if a != DEAL)})"
     )
-
-    state = deal_new_hand()
-    players = []
-    for a in action_history:
-        if a == DEAL:
-            if is_chance_node(state):
-                sample_chance(state)
-            continue
-        if is_terminal(state):
-            break
-        p = get_current_player(state)
-        if p < 0:
-            break
-        players.append(p)
-        apply_action(state, a)
-        if is_terminal(state):
-            break
-    return players
-
-
-def _history_str(action_history):
-    """Render action_history as a readable string, tracking street changes."""
-    try:
-        players = _players_for_action_history(action_history)
-    except Exception:
-        players = None
-
     ri = 0
     parts = []
-    pi = 0
+    actor_idx = 0
     street_names = {1: "Flop", 2: "Turn", 3: "River"}
     for a in action_history:
         if a == DEAL:
@@ -124,11 +93,8 @@ def _history_str(action_history):
             parts.append(f"{DIM}[{name}]{RESET}")
         else:
             label = _action_label(a, ri)
-            if players is not None and pi < len(players):
-                who = f"P{players[pi]}"
-                pi += 1
-            else:
-                who = "P?"
+            who = f"P{actor_history[actor_idx]}"
+            actor_idx += 1
             parts.append(f"{DIM}{a}{RESET}({who} {label})")
     return " → ".join(parts) if parts else f"{DIM}(preflop start){RESET}"
 
@@ -440,7 +406,7 @@ class CFRDebugger:
         _field("Pot", f"{BOLD}{state.pot:.2f} BB{RESET}   street bets: {bets}")
 
         # History
-        _field("History", _history_str(state.action_history))
+        _field("History", _history_str(state.action_history, state.actor_history))
         _blank()
 
     def _print_strategy(

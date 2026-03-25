@@ -18,5 +18,4 @@ def get_info_key(state: NLHEState, player: int) -> InfoSetKey:
     board = tuple(state.board)
     round_idx = state.round_idx
     bucket = get_bucket(hole, board, round_idx)
-    history = tuple(state.action_history)
-    return (bucket, history)
+    return (bucket, state.action_history)

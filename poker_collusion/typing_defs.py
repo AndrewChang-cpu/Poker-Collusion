@@ -4,7 +4,7 @@ Shared type aliases and Protocols for the poker_collusion package.
 
 from __future__ import annotations
 
-from typing import Any, List, Literal, Optional, Protocol, Sequence, Tuple, Union
+from typing import Any, List, Literal, Protocol, Tuple, Union
 
 # Action index 0..9 or community-card deal marker in history
 ActionHistoryEntry = Union[int, Literal["DEAL"]]
@@ -21,11 +21,11 @@ class AbstractionState(Protocol):
 
     current_player: int
     round_idx: int
-    stacks: List[float]
+    stacks: Tuple[float, ...]
     pot: float
-    bets: List[float]
-    active: List[bool]
-    all_in: List[bool]
+    bets: Tuple[float, ...]
+    active: Tuple[bool, ...]
+    all_in: Tuple[bool, ...]
     last_raiser: int
     last_raise_amount: float
 
@@ -40,6 +40,5 @@ class CFRGame(Protocol):
     def is_terminal(self, state: Any) -> bool: ...
     def get_payoffs(self, state: Any) -> List[float]: ...
     def apply_action(self, state: Any, action_index: int) -> Any: ...
-    def undo_action(self, state: Optional[Any] = None) -> None: ...
     def is_chance_node(self, state: Any) -> bool: ...
     def sample_chance(self, state: Any) -> Any: ...
