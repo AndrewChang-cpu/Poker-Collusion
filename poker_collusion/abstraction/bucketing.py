@@ -3,7 +3,11 @@ Bucket lookup: (hole_cards, board, round) -> bucket id.
 Loads precomputed tables from data/ when available; fallback to 0.
 """
 
+from __future__ import annotations
+
 import os
+from typing import Dict, List, Optional, Sequence
+
 from poker_collusion.config import (
     PREFLOP_BUCKETS,
     FLOP_BUCKETS,
@@ -16,18 +20,18 @@ from poker_collusion.config import (
     RIVER_BUCKETS_FILE,
 )
 
-_preflop_table = None
-_flop_centers = None
-_turn_centers = None
-_river_centers = None
+_preflop_table: Optional[Dict[int, int]] = None
+_flop_centers: Optional[List[float]] = None
+_turn_centers: Optional[List[float]] = None
+_river_centers: Optional[List[float]] = None
 
 
-def _path(filename):
+def _path(filename: str) -> str:
     base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(base, DEFAULT_BUCKET_DIR, filename)
 
 
-def _load_tables():
+def _load_tables() -> None:
     global _preflop_table, _flop_centers, _turn_centers, _river_centers
     if _preflop_table is not None:
         return
@@ -53,7 +57,9 @@ def _load_tables():
         pass
 
 
-def get_bucket(hole_cards, board, round_idx):
+def get_bucket(
+    hole_cards: Sequence[int], board: Sequence[int], round_idx: int
+) -> int:
     """
     Return bucket id in [0, n_buckets-1] for (hole_cards, board) at given round.
     hole_cards: tuple of 2 ints (card indices 0-51).
@@ -81,7 +87,7 @@ def get_bucket(hole_cards, board, round_idx):
     return 0
 
 
-def _hole_to_canonical(hole_cards):
+def _hole_to_canonical(hole_cards: Sequence[int]) -> int:
     """Map 2 cards to 169 canonical hand id (0..168). Matches bucketing_build.preflop_table."""
     r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
     s0, s1 = hole_cards[0] // 13, hole_cards[1] // 13
@@ -92,7 +98,7 @@ def _hole_to_canonical(hole_cards):
     return 13 + (high - 1) * high + 2 * low + (0 if suited else 1)
 
 
-def _preflop_fallback(hole_cards, num_buckets=PREFLOP_BUCKETS):
+def _preflop_fallback(hole_cards: Sequence[int], num_buckets: int = PREFLOP_BUCKETS) -> int:
     """Simple rank-based fallback when no table loaded."""
     r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
     high, low = max(r0, r1), min(r0, r1)
@@ -105,7 +111,9 @@ def _preflop_fallback(hole_cards, num_buckets=PREFLOP_BUCKETS):
     return int((score / (12 * 13 + 12 + 100 + 20 + 1)) * num_buckets) % num_buckets
 
 
-def _postflop_fallback(hole_cards, board, num_buckets):
+def _postflop_fallback(
+    hole_cards: Sequence[int], board: Sequence[int], num_buckets: int
+) -> int:
     """Fallback: use hand category. Requires hand_eval."""
     from poker_collusion.env.hand_eval import evaluate_hand
     cards = list(hole_cards) + list(board)
@@ -116,7 +124,13 @@ def _postflop_fallback(hole_cards, board, num_buckets):
     return int((category / 9.0) * num_buckets) % num_buckets
 
 
-def _equity_to_bucket(hole_cards, board, board_len, centers, num_buckets):
+def _equity_to_bucket(
+    hole_cards: Sequence[int],
+    board: Sequence[int],
+    board_len: int,
+    centers: Optional[List[float]],
+    num_buckets: int,
+) -> int:
     """Assign bucket by nearest cluster center (equity)."""
     eq = _estimate_equity(hole_cards, board, board_len)
     if centers is None or len(centers) == 0:
@@ -131,7 +145,12 @@ def _equity_to_bucket(hole_cards, board, board_len, centers, num_buckets):
     return best % num_buckets
 
 
-def _estimate_equity(hole_cards, board, board_len, n_rollouts=100):
+def _estimate_equity(
+    hole_cards: Sequence[int],
+    board: Sequence[int],
+    board_len: int,
+    n_rollouts: int = 100,
+) -> float:
     """Monte Carlo equity estimate vs random opponent (0..1)."""
     import random
     from poker_collusion.env.hand_eval import evaluate_hand

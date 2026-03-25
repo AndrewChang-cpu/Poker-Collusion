@@ -49,7 +49,7 @@ class GameModule:
     sample_chance = staticmethod(sample_chance)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--strategy", "-s", default="output/blueprint.pkl", help="Path to saved strategy")
     ap.add_argument("--hands", type=int, default=EVAL_HANDS_DEFAULT)

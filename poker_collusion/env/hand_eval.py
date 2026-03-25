@@ -4,33 +4,39 @@ Cards are integers 0-51: suit = card // 13, rank = card % 13 (0=2 .. 12=A).
 Returns a comparable tuple; higher = better hand.
 """
 
+from __future__ import annotations
+
 from itertools import combinations
 from collections import Counter
+from typing import Iterable, Optional, Tuple
+
+from poker_collusion.typing_defs import HandScore
 
 
-def card_rank(card):
+def card_rank(card: int) -> int:
     return card % 13
 
 
-def card_suit(card):
+def card_suit(card: int) -> int:
     return card // 13
 
 
-def evaluate_hand(cards):
+def evaluate_hand(cards: Iterable[int]) -> HandScore:
     """
     Evaluate best 5-card hand from 5-7 cards.
     Returns a tuple that can be compared: higher = better.
     """
-    best = None
+    best: Optional[HandScore] = None
     card_list = list(cards)
     for combo in combinations(card_list, 5):
         score = _score_5(combo)
         if best is None or score > best:
             best = score
+    assert best is not None
     return best
 
 
-def _score_5(cards):
+def _score_5(cards: Tuple[int, ...]) -> HandScore:
     """Score a 5-card hand. Returns comparable tuple."""
     ranks = sorted([card_rank(c) for c in cards], reverse=True)
     suits = [card_suit(c) for c in cards]

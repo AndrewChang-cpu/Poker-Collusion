@@ -5,3 +5,4 @@ nlhe3p_strategy.pkl
 .cursor/
 .claude/
 # .vibe/
+.env

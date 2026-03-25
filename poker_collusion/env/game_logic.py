@@ -2,36 +2,40 @@
 Game logic: legal actions, apply_action, undo_action, chance nodes, round advancement.
 """
 
-# Set by apply_action so undo_action() can undo without explicit state (CFR interface).
-_current_state = None
+from __future__ import annotations
+
+from typing import List, Optional, Set
 
 from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB
 from poker_collusion.env.game_state import NLHEState, DEAL
+
+# Set by apply_action so undo_action() can undo without explicit state (CFR interface).
+_current_state: Optional[NLHEState] = None
 from poker_collusion.env.hand_eval import evaluate_hand
 from poker_collusion.abstraction.actions import get_legal_action_indices, action_index_to_chips
 
 
-def get_current_player(state):
+def get_current_player(state: NLHEState) -> int:
     if state.done or state.chance_pending:
         return -1
     return state.current_player
 
 
-def get_legal_actions(state):
+def get_legal_actions(state: NLHEState) -> List[int]:
     if state.done or state.chance_pending:
         return []
     return get_legal_action_indices(state)
 
 
-def is_terminal(state):
+def is_terminal(state: NLHEState) -> bool:
     return state.done
 
 
-def is_chance_node(state):
+def is_chance_node(state: NLHEState) -> bool:
     return state.chance_pending and not state.done
 
 
-def sample_chance(state):
+def sample_chance(state: NLHEState) -> NLHEState:
     """Deal next street (flop/turn/river), append DEAL to history, advance round."""
     if not state.chance_pending or state.done:
         return state
@@ -61,7 +65,7 @@ def sample_chance(state):
     return state
 
 
-def apply_action(state, action_index):
+def apply_action(state: NLHEState, action_index: int) -> NLHEState:
     """Apply action (index 0..9), update state, possibly set chance_pending. Mutates state."""
     global _current_state
     _current_state = state
@@ -103,7 +107,7 @@ def apply_action(state, action_index):
     return state
 
 
-def undo_action(state=None):
+def undo_action(state: Optional[NLHEState] = None) -> None:
     """Undo last apply_action or sample_chance. If state is None, use module-level _current_state."""
     global _current_state
     if state is None:
@@ -139,7 +143,7 @@ def undo_action(state=None):
     state.done = False
 
 
-def _advance_to_next_player(state):
+def _advance_to_next_player(state: NLHEState) -> None:
     can_act = [i for i in range(NUM_PLAYERS) if state.active[i] and not state.all_in[i]]
     if len(can_act) <= 1:
         _run_out_board_and_resolve(state)
@@ -158,7 +162,7 @@ def _advance_to_next_player(state):
     state.current_player = next_p
 
 
-def _who_acted_this_round(state):
+def _who_acted_this_round(state: NLHEState) -> Set[int]:
     """Return set of player indices who have acted in the current street (since last DEAL)."""
     hist = state.action_history
     start = 0
@@ -180,7 +184,7 @@ def _who_acted_this_round(state):
     return acted
 
 
-def _is_round_complete(state):
+def _is_round_complete(state: NLHEState) -> bool:
     can_act = [i for i in range(NUM_PLAYERS) if state.active[i] and not state.all_in[i]]
     if not can_act:
         return True
@@ -229,7 +233,7 @@ def _is_round_complete(state):
     return True
 
 
-def _run_out_board_and_resolve(state):
+def _run_out_board_and_resolve(state: NLHEState) -> None:
     while len(state.board) < 5:
         n = 3 if state.round_idx == 0 else 1
         for _ in range(n):
@@ -239,7 +243,7 @@ def _run_out_board_and_resolve(state):
     _resolve_hand(state)
 
 
-def _resolve_hand(state):
+def _resolve_hand(state: NLHEState) -> None:
     """Resolve hand: fold winner or showdown with side pots."""
     state.done = True
     active = [p for p in range(NUM_PLAYERS) if state.active[p]]
@@ -250,7 +254,9 @@ def _resolve_hand(state):
     _resolve_side_pots(state, active, contributions)
 
 
-def _resolve_side_pots(state, active_players, contributions):
+def _resolve_side_pots(
+    state: NLHEState, active_players: List[int], contributions: List[float]
+) -> None:
     """Distribute state.pot among active players using side pot rules."""
     # Pot slice at level L: (L - prev) * (number of players with contribution >= L)
     # Winner of that slice: best hand among *active* players with contribution >= L

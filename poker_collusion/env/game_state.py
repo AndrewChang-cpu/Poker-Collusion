@@ -2,6 +2,10 @@
 Game state for 3-player NLHE: 20 BB, action history with indices + DEAL.
 """
 
+from __future__ import annotations
+
+from typing import Any, Dict, List, Tuple, Union
+
 import numpy as np
 
 from poker_collusion.config import (
@@ -12,7 +16,12 @@ from poker_collusion.config import (
 )
 
 # Sentinel for "community cards dealt" in action_history (must be hashable for info set key)
-DEAL = "DEAL"
+DEAL: str = "DEAL"
+
+UndoEntry = Union[
+    Tuple[str, int, List[float], int, float],
+    Dict[str, Any],
+]
 
 
 class NLHEState:
@@ -42,27 +51,27 @@ class NLHEState:
         "undo_stack",
     )
 
-    def __init__(self):
-        self.deck = []
-        self.deck_idx = 0
-        self.hole_cards = [[] for _ in range(NUM_PLAYERS)]
-        self.board = []
-        self.round_idx = 0  # 0=preflop, 1=flop, 2=turn, 3=river
-        self.stacks = [STARTING_STACK_BB] * NUM_PLAYERS
-        self.pot = 0.0
-        self.bets = [0.0] * NUM_PLAYERS  # current street bets
-        self.active = [True] * NUM_PLAYERS
-        self.all_in = [False] * NUM_PLAYERS
-        self.current_player = 0
-        self.action_history = []  # int (action index) or DEAL
-        self.last_raiser = -1
-        self.last_raise_amount = 0.0  # min raise size for next raiser
-        self.done = False
-        self.chance_pending = False  # True when street ended, need to deal
-        self.undo_stack = []  # for step_back
+    def __init__(self) -> None:
+        self.deck: List[int] = []
+        self.deck_idx: int = 0
+        self.hole_cards: List[List[int]] = [[] for _ in range(NUM_PLAYERS)]
+        self.board: List[int] = []
+        self.round_idx: int = 0  # 0=preflop, 1=flop, 2=turn, 3=river
+        self.stacks: List[float] = [STARTING_STACK_BB] * NUM_PLAYERS
+        self.pot: float = 0.0
+        self.bets: List[float] = [0.0] * NUM_PLAYERS  # current street bets
+        self.active: List[bool] = [True] * NUM_PLAYERS
+        self.all_in: List[bool] = [False] * NUM_PLAYERS
+        self.current_player: int = 0
+        self.action_history: List[Union[int, str]] = []  # int (action index) or DEAL
+        self.last_raiser: int = -1
+        self.last_raise_amount: float = 0.0  # min raise size for next raiser
+        self.done: bool = False
+        self.chance_pending: bool = False  # True when street ended, need to deal
+        self.undo_stack: List[UndoEntry] = []  # for step_back
 
 
-def deal_new_hand():
+def deal_new_hand() -> NLHEState:
     """Deal a fresh 3-player hand. P0=Button, P1=SB, P2=BB. Preflop order 0,1,2."""
     state = NLHEState()
     state.deck = list(np.random.permutation(52))
@@ -86,6 +95,6 @@ def deal_new_hand():
     return state
 
 
-def get_payoffs(state):
+def get_payoffs(state: NLHEState) -> List[float]:
     """Net profit in BB for each player (stacks - 20). Only valid when state.done."""
     return [state.stacks[p] - STARTING_STACK_BB for p in range(NUM_PLAYERS)]

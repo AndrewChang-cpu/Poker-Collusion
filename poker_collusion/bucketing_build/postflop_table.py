@@ -3,13 +3,21 @@ Build postflop bucket tables: sample (hand, board), MC equity, k-means -> 50 clu
 Saves cluster centers for flop, turn, river.
 """
 
+from __future__ import annotations
+
 import random
+from typing import Iterator, List, Optional, Tuple
+
 import numpy as np
 from poker_collusion.env.hand_eval import evaluate_hand
 from poker_collusion.config import FLOP_BUCKETS, TURN_BUCKETS, RIVER_BUCKETS
 
 
-def sample_hand_board(board_len, n_samples, rng=None):
+def sample_hand_board(
+    board_len: int,
+    n_samples: int,
+    rng: Optional[random.Random] = None,
+) -> Iterator[Tuple[Tuple[int, int], Tuple[int, ...]]]:
     """
     Yield (hole_cards, board) as tuples. board_len in (3, 4, 5).
     """
@@ -22,7 +30,9 @@ def sample_hand_board(board_len, n_samples, rng=None):
         yield hole, board
 
 
-def equity_flop(hole, board, n_rollouts=500):
+def equity_flop(
+    hole: Tuple[int, int], board: Tuple[int, ...], n_rollouts: int = 500
+) -> float:
     """Equity vs random opponent with random turn/river."""
     used = set(hole) | set(board)
     deck = [c for c in range(52) if c not in used]
@@ -41,7 +51,9 @@ def equity_flop(hole, board, n_rollouts=500):
     return wins / n_rollouts
 
 
-def equity_turn(hole, board, n_rollouts=500):
+def equity_turn(
+    hole: Tuple[int, int], board: Tuple[int, ...], n_rollouts: int = 500
+) -> float:
     """Equity vs random opponent with random river."""
     used = set(hole) | set(board)
     deck = [c for c in range(52) if c not in used]
@@ -60,7 +72,9 @@ def equity_turn(hole, board, n_rollouts=500):
     return wins / n_rollouts
 
 
-def equity_river(hole, board, n_rollouts=500):
+def equity_river(
+    hole: Tuple[int, int], board: Tuple[int, ...], n_rollouts: int = 500
+) -> float:
     """Hand strength on river: win prob vs 2 random opponent hands (2 opponents)."""
     used = set(hole) | set(board)
     deck = [c for c in range(52) if c not in used]
@@ -83,7 +97,12 @@ def equity_river(hole, board, n_rollouts=500):
     return wins / n_rollouts
 
 
-def build_flop_table(n_samples=50000, n_rollouts=500, n_clusters=50, seed=42):
+def build_flop_table(
+    n_samples: int = 50000,
+    n_rollouts: int = 500,
+    n_clusters: int = 50,
+    seed: int = 42,
+) -> List[float]:
     """Sample (hand, flop), compute equity, k-means, return cluster centers."""
     try:
         from sklearn.cluster import KMeans
@@ -100,7 +119,9 @@ def build_flop_table(n_samples=50000, n_rollouts=500, n_clusters=50, seed=42):
     return kmeans.cluster_centers_.flatten().tolist()
 
 
-def _build_flop_fallback(n_samples, n_rollouts, n_clusters, seed):
+def _build_flop_fallback(
+    n_samples: int, n_rollouts: int, n_clusters: int, seed: int
+) -> List[float]:
     """Equal-width bins when sklearn not available."""
     rng = random.Random(seed)
     equities = []
@@ -112,7 +133,12 @@ def _build_flop_fallback(n_samples, n_rollouts, n_clusters, seed):
     return edges.tolist()
 
 
-def build_turn_table(n_samples=50000, n_rollouts=500, n_clusters=50, seed=42):
+def build_turn_table(
+    n_samples: int = 50000,
+    n_rollouts: int = 500,
+    n_clusters: int = 50,
+    seed: int = 42,
+) -> List[float]:
     """Sample (hand, turn), compute equity, k-means, return cluster centers."""
     try:
         from sklearn.cluster import KMeans
@@ -129,7 +155,9 @@ def build_turn_table(n_samples=50000, n_rollouts=500, n_clusters=50, seed=42):
     return kmeans.cluster_centers_.flatten().tolist()
 
 
-def _build_turn_fallback(n_samples, n_rollouts, n_clusters, seed):
+def _build_turn_fallback(
+    n_samples: int, n_rollouts: int, n_clusters: int, seed: int
+) -> List[float]:
     rng = random.Random(seed)
     equities = []
     for hole, board in sample_hand_board(4, n_samples, rng):
@@ -140,7 +168,12 @@ def _build_turn_fallback(n_samples, n_rollouts, n_clusters, seed):
     return edges.tolist()
 
 
-def build_river_table(n_samples=50000, n_rollouts=500, n_clusters=50, seed=42):
+def build_river_table(
+    n_samples: int = 50000,
+    n_rollouts: int = 500,
+    n_clusters: int = 50,
+    seed: int = 42,
+) -> List[float]:
     """Sample (hand, river), compute strength, k-means, return cluster centers."""
     try:
         from sklearn.cluster import KMeans
@@ -157,7 +190,9 @@ def build_river_table(n_samples=50000, n_rollouts=500, n_clusters=50, seed=42):
     return kmeans.cluster_centers_.flatten().tolist()
 
 
-def _build_river_fallback(n_samples, n_rollouts, n_clusters, seed):
+def _build_river_fallback(
+    n_samples: int, n_rollouts: int, n_clusters: int, seed: int
+) -> List[float]:
     rng = random.Random(seed)
     equities = []
     for hole, board in sample_hand_board(5, n_samples, rng):

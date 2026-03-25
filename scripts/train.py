@@ -57,7 +57,7 @@ class GameModule:
     sample_chance = staticmethod(sample_chance)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description="MCCFR training; optionally resume from --load and/or checkpoint with --checkpoint-every")
     ap.add_argument("--iterations", "-n", type=int, default=T_MAX_DEFAULT, help="Training iterations (additional if --load)")
     ap.add_argument("--log-interval", type=int, default=LOG_INTERVAL)

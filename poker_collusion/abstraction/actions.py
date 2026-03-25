@@ -3,7 +3,12 @@ Action sets by round (10 each) and legality filtering.
 State must have: round_idx, current_player, stacks, pot, bets, active, all_in, last_raiser, last_raise_amount.
 """
 
-from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB, NUM_ACTIONS
+from __future__ import annotations
+
+from typing import List, Tuple
+
+from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB
+from poker_collusion.typing_defs import AbstractionState
 
 # Preflop: absolute BB amounts for raise sizes (index 2..8), 9 = all-in 20 BB
 PREFLOP_RAISE_BB = [2.0, 2.5, 3.0, 4.0, 5.0, 8.0, 12.0]
@@ -12,26 +17,26 @@ PREFLOP_RAISE_BB = [2.0, 2.5, 3.0, 4.0, 5.0, 8.0, 12.0]
 POSTFLOP_POT_MULT = [0.25, 0.33, 0.5, 0.66, 0.75, 1.0, 1.5]
 
 
-def _to_call(state):
+def _to_call(state: AbstractionState) -> float:
     p = state.current_player
     return max(state.bets) - state.bets[p]
 
 
-def _max_bet(state):
+def _max_bet(state: AbstractionState) -> float:
     return max(state.bets)
 
 
-def _pot_for_acting(state):
+def _pot_for_acting(state: AbstractionState) -> float:
     """Pot as seen by current player (including the bet they are facing)."""
     return state.pot + _to_call(state)
 
 
-def _min_raise_total(state):
+def _min_raise_total(state: AbstractionState) -> float:
     """Minimum total bet (not increment) for a legal raise."""
     return _max_bet(state) + state.last_raise_amount
 
 
-def get_legal_action_indices(state):
+def get_legal_action_indices(state: AbstractionState) -> List[int]:
     """
     Return list of legal action indices in [0..9] for current player.
     Fold only when to_call > 0; check only when to_call == 0; min-raise and stack filtering.
@@ -99,7 +104,7 @@ def get_legal_action_indices(state):
     return sorted(legal)
 
 
-def action_index_to_chips(state, action_index):
+def action_index_to_chips(state: AbstractionState, action_index: int) -> Tuple[bool, float]:
     """
     Return (is_fold, total_bet_this_street) for current player.
     total_bet_this_street = amount this player puts in this street after the action (so bets[p] becomes this).

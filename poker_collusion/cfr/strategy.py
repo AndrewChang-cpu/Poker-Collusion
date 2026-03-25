@@ -2,10 +2,16 @@
 Regret matching and average strategy extraction for CFR.
 """
 
+from __future__ import annotations
+
+from typing import Sequence, Union
+
 import numpy as np
 
+RegretLike = Union[Sequence[float], np.ndarray]
 
-def regret_matching(regret_sum, num_actions):
+
+def regret_matching(regret_sum: RegretLike, num_actions: int) -> np.ndarray:
     """
     Convert cumulative regrets to strategy probabilities.
     positive_regret[a] = max(regret_sum[a], 0); then normalize.
@@ -23,7 +29,7 @@ def regret_matching(regret_sum, num_actions):
     return np.ones(num_actions) / num_actions
 
 
-def get_average_strategy(strategy_sum, num_actions):
+def get_average_strategy(strategy_sum: RegretLike, num_actions: int) -> np.ndarray:
     """
     Normalized cumulative strategy = blueprint.
     If sum is 0, return uniform.

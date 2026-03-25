@@ -3,22 +3,28 @@ Competent-amateur policy: hand strength (preflop 2-card, postflop Monte Carlo) +
 Outputs a probability distribution over legal actions for evaluation vs CFR.
 """
 
+from __future__ import annotations
+
+from typing import List, Sequence, Tuple
+
 import numpy as np
+
+from poker_collusion.env.game_state import NLHEState
 from poker_collusion.env.hand_eval import evaluate_hand, card_rank, card_suit
 
 # Default number of random opponent hands for postflop strength
 DEFAULT_POSTFLOP_SAMPLES = 100
 
 
-def _to_call(state, player):
+def _to_call(state: NLHEState, player: int) -> float:
     return max(state.bets) - state.bets[player]
 
 
-def _pot_after_call(state, player):
+def _pot_after_call(state: NLHEState, player: int) -> float:
     return state.pot + _to_call(state, player)
 
 
-def _preflop_strength(hole_cards):
+def _preflop_strength(hole_cards: Sequence[int]) -> float:
     """
     Scalar strength in [0, 1] from two hole cards.
     Uses high rank, pair, suited, connected.
@@ -40,7 +46,11 @@ def _preflop_strength(hole_cards):
     return float(np.clip(base, 0.0, 1.0))
 
 
-def _postflop_strength(hole_cards, board, n_samples=DEFAULT_POSTFLOP_SAMPLES):
+def _postflop_strength(
+    hole_cards: Sequence[int],
+    board: Sequence[int],
+    n_samples: int = DEFAULT_POSTFLOP_SAMPLES,
+) -> float:
     """
     Monte Carlo hand strength: win rate vs n_samples random opponent hands.
     Returns float in [0, 1]. Ties count as 0.5.
@@ -65,7 +75,9 @@ def _postflop_strength(hole_cards, board, n_samples=DEFAULT_POSTFLOP_SAMPLES):
     return wins / n_samples
 
 
-def _fold_call_raise_weights(strength, to_call, pot_after_call, facing_bet):
+def _fold_call_raise_weights(
+    strength: float, to_call: float, pot_after_call: float, facing_bet: bool
+) -> Tuple[float, float, float]:
     """
     Base weights (fold_w, call_w, raise_w) from strength and pot odds.
     facing_bet: True if to_call > 0.
@@ -93,7 +105,12 @@ def _fold_call_raise_weights(strength, to_call, pot_after_call, facing_bet):
     return fold_w, call_w, raise_w
 
 
-def get_action_probs(state, player, legal_actions, n_postflop_samples=DEFAULT_POSTFLOP_SAMPLES):
+def get_action_probs(
+    state: NLHEState,
+    player: int,
+    legal_actions: List[int],
+    n_postflop_samples: int = DEFAULT_POSTFLOP_SAMPLES,
+) -> np.ndarray:
     """
     Return a probability distribution over legal_actions (same length as legal_actions).
     state: NLHEState; player: int; legal_actions: list of action indices in [0..9].
@@ -134,10 +151,12 @@ def get_action_probs(state, player, legal_actions, n_postflop_samples=DEFAULT_PO
 class AmateurPolicy:
     """Wrapper so evaluation can detect policy type and call get_action_probs."""
 
-    def __init__(self, n_postflop_samples=DEFAULT_POSTFLOP_SAMPLES):
+    def __init__(self, n_postflop_samples: int = DEFAULT_POSTFLOP_SAMPLES) -> None:
         self.n_postflop_samples = n_postflop_samples
 
-    def get_action_probs(self, state, player, legal_actions):
+    def get_action_probs(
+        self, state: NLHEState, player: int, legal_actions: List[int]
+    ) -> np.ndarray:
         return get_action_probs(
             state, player, legal_actions, n_postflop_samples=self.n_postflop_samples
         )

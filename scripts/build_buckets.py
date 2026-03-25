@@ -32,7 +32,7 @@ from poker_collusion.bucketing_build.postflop_table import (
 )
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description="Build bucket tables for NLHE abstraction")
     ap.add_argument("--out-dir", default=DEFAULT_BUCKET_DIR, help="Output directory")
     ap.add_argument("--preflop-rollouts", type=int, default=500, help="MC rollouts per preflop hand")

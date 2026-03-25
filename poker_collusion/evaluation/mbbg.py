@@ -2,13 +2,36 @@
 Self-play evaluation: mbb/g and block bootstrap standard error.
 """
 
+from __future__ import annotations
+
+from typing import Any, List, Optional, Protocol, Tuple, Union
+
 import numpy as np
 from tqdm import tqdm
+
 from poker_collusion.config import NUM_PLAYERS, EVAL_BLOCK_SIZE
 from poker_collusion.evaluation.amateur_policy import AmateurPolicy
+from poker_collusion.typing_defs import CFRGame
 
 
-def _get_policy_probs(game, state, player, actions, policy):
+class _SupportsAverageStrategy(Protocol):
+    def get_average_strategy(
+        self, info_key: Any, legal_actions: List[int]
+    ) -> Any: ...
+
+
+class _SupportsActionProbs(Protocol):
+    def get_action_probs(
+        self, state: Any, player: int, legal_actions: List[int]
+    ) -> Any: ...
+
+
+Policy = Union[_SupportsAverageStrategy, _SupportsActionProbs, AmateurPolicy]
+
+
+def _get_policy_probs(
+    game: CFRGame, state: Any, player: int, actions: List[int], policy: Policy
+) -> np.ndarray:
     """Return probability distribution over actions from trainer or amateur policy."""
     if hasattr(policy, "get_average_strategy"):
         info_key = game.get_info_key(state, player)
@@ -20,7 +43,9 @@ def _get_policy_probs(game, state, player, actions, policy):
     return probs
 
 
-def play_hand(game, trainer, num_players=NUM_PLAYERS):
+def play_hand(
+    game: CFRGame, trainer: _SupportsAverageStrategy, num_players: int = NUM_PLAYERS
+) -> List[float]:
     """
     Play one hand; all players use the trainer's average strategy.
     Returns list of payoffs (BB) per player.
@@ -43,7 +68,9 @@ def play_hand(game, trainer, num_players=NUM_PLAYERS):
     return game.get_payoffs(state)
 
 
-def play_hand_with_policies(game, policies, num_players=NUM_PLAYERS):
+def play_hand_with_policies(
+    game: CFRGame, policies: List[Policy], num_players: int = NUM_PLAYERS
+) -> List[float]:
     """
     Play one hand with per-player policies. policies[i] is either a CFRTrainer
     (uses get_average_strategy) or an AmateurPolicy (uses get_action_probs).
@@ -65,7 +92,12 @@ def play_hand_with_policies(game, policies, num_players=NUM_PLAYERS):
     return game.get_payoffs(state)
 
 
-def evaluate(game, trainer, num_hands=10000, num_players=NUM_PLAYERS):
+def evaluate(
+    game: CFRGame,
+    trainer: _SupportsAverageStrategy,
+    num_hands: int = 10000,
+    num_players: int = NUM_PLAYERS,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Run evaluation; return (avg_payoffs, mbb_per_game) per player.
     mbb/g = (avg profit per hand in BB) * 1000.
@@ -79,12 +111,12 @@ def evaluate(game, trainer, num_hands=10000, num_players=NUM_PLAYERS):
 
 
 def evaluate_with_variance(
-    game,
-    trainer,
-    num_hands=10000,
-    num_players=NUM_PLAYERS,
-    block_size=EVAL_BLOCK_SIZE,
-):
+    game: CFRGame,
+    trainer: _SupportsAverageStrategy,
+    num_hands: int = 10000,
+    num_players: int = NUM_PLAYERS,
+    block_size: int = EVAL_BLOCK_SIZE,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Evaluate with block bootstrap standard error and 95% CI.
     Returns (mbb_mean, mbb_se) arrays.
@@ -122,14 +154,14 @@ def evaluate_with_variance(
 
 
 def evaluate_vs_amateur(
-    game,
-    trainer,
-    num_hands=10000,
-    num_players=NUM_PLAYERS,
-    cfr_seat=0,
-    block_size=EVAL_BLOCK_SIZE,
-    amateur=None,
-):
+    game: CFRGame,
+    trainer: _SupportsAverageStrategy,
+    num_hands: int = 10000,
+    num_players: int = NUM_PLAYERS,
+    cfr_seat: int = 0,
+    block_size: int = EVAL_BLOCK_SIZE,
+    amateur: Optional[AmateurPolicy] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Evaluate CFR (trainer) vs amateur policy. CFR plays in cfr_seat; others play amateur.
     With rotation, run this for cfr_seat=0,1,2 and average CFR mbb/g.
@@ -175,13 +207,13 @@ def evaluate_vs_amateur(
 
 
 def evaluate_vs_amateur_rotate(
-    game,
-    trainer,
-    num_hands_per_seat=10000,
-    num_players=NUM_PLAYERS,
-    block_size=EVAL_BLOCK_SIZE,
-    amateur=None,
-):
+    game: CFRGame,
+    trainer: _SupportsAverageStrategy,
+    num_hands_per_seat: int = 10000,
+    num_players: int = NUM_PLAYERS,
+    block_size: int = EVAL_BLOCK_SIZE,
+    amateur: Optional[AmateurPolicy] = None,
+) -> Tuple[List[float], List[float]]:
     """
     Run evaluate_vs_amateur for cfr_seat=0,1,2 (BTN, SB, BB). Report per-seat and average CFR mbb/g.
     """

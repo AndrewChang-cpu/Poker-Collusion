@@ -2,13 +2,17 @@
 Build preflop bucket table: 169 canonical hands -> 15 buckets by equity vs random.
 """
 
+from __future__ import annotations
+
 import random
+from typing import Dict, Iterator, Optional, Sequence, Tuple
+
 import numpy as np
 from poker_collusion.env.hand_eval import evaluate_hand
 from poker_collusion.config import PREFLOP_BUCKETS
 
 
-def enumerate_canonical_hands():
+def enumerate_canonical_hands() -> Iterator[Tuple[int, int, int]]:
     """
     Yield (canonical_id, card0, card1) for each of 169 types.
     canonical_id: 0..12 for pairs (2-2 .. A-A), then suited/offsuit combos.
@@ -31,7 +35,7 @@ def enumerate_canonical_hands():
             idx += 1
 
 
-def equity_vs_random(hole0, hole1, n_rollouts=1000):
+def equity_vs_random(hole0: int, hole1: int, n_rollouts: int = 1000) -> float:
     """All-in equity vs one random opponent hand (0..1)."""
     used = {hole0, hole1}
     deck = [c for c in range(52) if c not in used]
@@ -49,7 +53,9 @@ def equity_vs_random(hole0, hole1, n_rollouts=1000):
     return wins / n_rollouts
 
 
-def build_preflop_table(n_rollouts=1000, num_buckets=None):
+def build_preflop_table(
+    n_rollouts: int = 1000, num_buckets: Optional[int] = None
+) -> Dict[int, int]:
     """
     Build mapping canonical_id -> bucket in [0, num_buckets-1].
     Equal-frequency binning by equity.
@@ -67,7 +73,7 @@ def build_preflop_table(n_rollouts=1000, num_buckets=None):
     return table
 
 
-def canonical_from_hole(hole_cards):
+def canonical_from_hole(hole_cards: Sequence[int]) -> int:
     """Map 2 cards to canonical id 0..168 (same as enumerate order)."""
     r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
     s0, s1 = hole_cards[0] // 13, hole_cards[1] // 13
