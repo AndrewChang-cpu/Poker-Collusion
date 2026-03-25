@@ -90,6 +90,8 @@ class CFRTrainer:
         Recursively traverse the game tree from state for the given traverser.
         apply_action and sample_chance return new state copies — no undo needed.
         """
+        # print(f"player: {traverser} depth: {len(state.action_history)} cfr_traverse: {state.action_history}")
+
         if self.game.is_terminal(state):
             payoffs = self.game.get_payoffs(state)
             self.debugger.on_terminal(state, traverser, len(state.action_history), self.iteration, payoffs)

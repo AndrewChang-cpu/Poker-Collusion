@@ -64,7 +64,7 @@ def play_hand(
         if avg_strategy is None or len(avg_strategy) != len(actions):
             avg_strategy = np.ones(len(actions)) / len(actions)
         action_idx = np.random.choice(len(actions), p=avg_strategy)
-        game.apply_action(state, actions[action_idx])
+        state = game.apply_action(state, actions[action_idx])
     return game.get_payoffs(state)
 
 
@@ -88,7 +88,7 @@ def play_hand_with_policies(
         policy = policies[player]
         probs = _get_policy_probs(game, state, player, actions, policy)
         action_idx = np.random.choice(len(actions), p=probs)
-        game.apply_action(state, actions[action_idx])
+        state = game.apply_action(state, actions[action_idx])
     return game.get_payoffs(state)
 
 

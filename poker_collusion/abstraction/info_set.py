@@ -4,9 +4,13 @@ Info set key: (card_bucket, action_history) with action indices and DEAL.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from poker_collusion.abstraction.bucketing import get_bucket
-from poker_collusion.env.game_state import NLHEState
 from poker_collusion.typing_defs import InfoSetKey
+
+if TYPE_CHECKING:
+    from poker_collusion.env.game_state import NLHEState
 
 
 def get_info_key(state: NLHEState, player: int) -> InfoSetKey:
