@@ -3,12 +3,7 @@ Action sets by round (10 each) and legality filtering.
 State must have: round_idx, current_player, stacks, pot, bets, active, all_in, last_raiser, last_raise_amount.
 """
 
-from __future__ import annotations
-
-from typing import List, Tuple
-
-from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB
-from poker_collusion.typing_defs import AbstractionState
+from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB, NUM_ACTIONS
 
 # Preflop: absolute BB amounts for raise sizes (index 2..8), 9 = all-in 20 BB
 PREFLOP_RAISE_BB = [2.0, 2.5, 3.0, 4.0, 5.0, 8.0, 12.0]
@@ -17,26 +12,26 @@ PREFLOP_RAISE_BB = [2.0, 2.5, 3.0, 4.0, 5.0, 8.0, 12.0]
 POSTFLOP_POT_MULT = [0.25, 0.33, 0.5, 0.66, 0.75, 1.0, 1.5]
 
 
-def _to_call(state: AbstractionState) -> float:
+def _to_call(state):
     p = state.current_player
     return max(state.bets) - state.bets[p]
 
 
-def _max_bet(state: AbstractionState) -> float:
+def _max_bet(state):
     return max(state.bets)
 
 
-def _pot_for_acting(state: AbstractionState) -> float:
+def _pot_for_acting(state):
     """Pot as seen by current player (including the bet they are facing)."""
     return state.pot + _to_call(state)
 
 
-def _min_raise_total(state: AbstractionState) -> float:
+def _min_raise_total(state):
     """Minimum total bet (not increment) for a legal raise."""
     return _max_bet(state) + state.last_raise_amount
 
 
-def get_legal_action_indices(state: AbstractionState) -> List[int]:
+def get_legal_action_indices(state):
     """
     Return list of legal action indices in [0..9] for current player.
     Fold only when to_call > 0; check only when to_call == 0; min-raise and stack filtering.
@@ -104,7 +99,7 @@ def get_legal_action_indices(state: AbstractionState) -> List[int]:
     return sorted(legal)
 
 
-def action_index_to_chips(state: AbstractionState, action_index: int) -> Tuple[bool, float]:
+def action_index_to_chips(state, action_index):
     """
     Return (is_fold, total_bet_this_street) for current player.
     total_bet_this_street = amount this player puts in this street after the action (so bets[p] becomes this).
@@ -115,14 +110,14 @@ def action_index_to_chips(state: AbstractionState, action_index: int) -> Tuple[b
     is_preflop = state.round_idx == 0
 
     if action_index == 0:
-        return True, state.bets[p]  # Fold: no extra chips (keep current bet as is for consistency; engine will set active=False)
+        return True, state.bets[p]
     if action_index == 1:
         if to_call > 0:
             return False, state.bets[p] + min(to_call, stack)
         return False, state.bets[p]
 
     if action_index == 9:
-        return False, state.bets[p] + stack  # All-in: put entire stack in this street
+        return False, state.bets[p] + stack
 
     if is_preflop:
         total_bb = PREFLOP_RAISE_BB[action_index - 2]
@@ -135,3 +130,24 @@ def action_index_to_chips(state: AbstractionState, action_index: int) -> Tuple[b
         total_bet = to_call + bet_amount
         total_bet = min(total_bet, stack)
         return False, total_bet
+
+def get_action_description(state, action_index):
+    """Return a human-readable description of an abstract action index."""
+    p = state.current_player
+    to_call = _to_call(state)
+    is_preflop = state.round_idx == 0
+    
+    if action_index == 0:
+        return "Fold"
+    if action_index == 1:
+        return f"Call {to_call:.1f} BB" if to_call > 0 else "Check"
+    if action_index == 9:
+        return f"All-in ({state.stacks[p]:.1f} BB)"
+    
+    if is_preflop:
+        amount = PREFLOP_RAISE_BB[action_index - 2]
+        return f"Raise to {amount:.1f} BB"
+    else:
+        mult = POSTFLOP_POT_MULT[action_index - 2]
+        pot = _pot_for_acting(state)
+        return f"Bet {int(mult*100)}% pot (to {to_call + mult*pot:.1f} BB total)"

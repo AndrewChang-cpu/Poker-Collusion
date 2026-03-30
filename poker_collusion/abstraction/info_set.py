@@ -2,24 +2,26 @@
 Info set key: (card_bucket, action_history) with action indices and DEAL.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
 from poker_collusion.abstraction.bucketing import get_bucket
-from poker_collusion.typing_defs import InfoSetKey
-
-if TYPE_CHECKING:
-    from poker_collusion.env.game_state import NLHEState
 
 
-def get_info_key(state: NLHEState, player: int) -> InfoSetKey:
+def get_info_key(state, player):
     """
     Return hashable info set key: (bucket, tuple(action_history)).
-    state must have: hole_cards, board, round_idx, action_history.
     """
     hole = tuple(state.hole_cards[player])
     board = tuple(state.board)
     round_idx = state.round_idx
-    bucket = get_bucket(hole, board, round_idx)
-    return (bucket, state.action_history)
+    
+    # Ensure bucket is a hashable integer
+    bucket = int(get_bucket(hole, board, round_idx))
+    
+    # Ensure history is a hashable tuple and contains no nested lists
+    history = []
+    for a in state.action_history:
+        if isinstance(a, list):
+            history.append(tuple(a))
+        else:
+            history.append(a)
+            
+    return (bucket, tuple(history))
