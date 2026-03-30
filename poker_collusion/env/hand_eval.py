@@ -4,39 +4,56 @@ Cards are integers 0-51: suit = card // 13, rank = card % 13 (0=2 .. 12=A).
 Returns a comparable tuple; higher = better hand.
 """
 
-from __future__ import annotations
-
 from itertools import combinations
 from collections import Counter
-from typing import Iterable, Optional, Tuple
 
-from poker_collusion.typing_defs import HandScore
+RANK_NAMES = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+HAND_TYPE_NAMES = [
+    "High Card", "Pair", "Two Pair", "Three of a Kind", 
+    "Straight", "Flush", "Full House", "Four of a Kind", "Straight Flush"
+]
 
-
-def card_rank(card: int) -> int:
+def card_rank(card):
     return card % 13
 
-
-def card_suit(card: int) -> int:
+def card_suit(card):
     return card // 13
 
-
-def evaluate_hand(cards: Iterable[int]) -> HandScore:
-    """
-    Evaluate best 5-card hand from 5-7 cards.
-    Returns a tuple that can be compared: higher = better.
-    """
-    best: Optional[HandScore] = None
+def evaluate_hand(cards):
+    """Evaluate best 5-card hand from 5-7 cards. Returns comparable tuple."""
+    best = None
     card_list = list(cards)
     for combo in combinations(card_list, 5):
         score = _score_5(combo)
         if best is None or score > best:
             best = score
-    assert best is not None
     return best
 
+def get_hand_description(score):
+    """Translates a score tuple into a human-readable string."""
+    if not score: return "Unknown"
+    type_idx = score[0]
+    name = HAND_TYPE_NAMES[type_idx]
+    
+    if type_idx == 8: # Straight Flush
+        return f"Straight Flush, {RANK_NAMES[score[1]]} high"
+    if type_idx == 7: # Quads
+        return f"Four of a Kind, {RANK_NAMES[score[1]]}s"
+    if type_idx == 6: # Full House
+        return f"Full House, {RANK_NAMES[score[1]]}s over {RANK_NAMES[score[2]]}s"
+    if type_idx == 5: # Flush
+        return f"Flush, {RANK_NAMES[score[1]]} high"
+    if type_idx == 4: # Straight
+        return f"Straight, {RANK_NAMES[score[1]]} high"
+    if type_idx == 3: # Trips
+        return f"Three of a Kind, {RANK_NAMES[score[1]]}s"
+    if type_idx == 2: # Two Pair
+        return f"Two Pair, {RANK_NAMES[score[1]]}s and {RANK_NAMES[score[2]]}s"
+    if type_idx == 1: # Pair
+        return f"Pair of {RANK_NAMES[score[1]]}s"
+    return f"High Card, {RANK_NAMES[score[1]]}"
 
-def _score_5(cards: Tuple[int, ...]) -> HandScore:
+def _score_5(cards):
     """Score a 5-card hand. Returns comparable tuple."""
     ranks = sorted([card_rank(c) for c in cards], reverse=True)
     suits = [card_suit(c) for c in cards]

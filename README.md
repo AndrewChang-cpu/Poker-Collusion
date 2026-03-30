@@ -51,6 +51,14 @@ python scripts/train.py --load output/blueprint.pkl --iterations 5000 --out outp
 
 # 3. Evaluate
 python scripts/evaluate.py --strategy output/blueprint.pkl --hands 50000
+
+# Validate playtest functions
+python scripts/playtest.py --blueprint output/blueprint.pkl --seat 0 --dry-run
+
+# Test as the Button (first to act preflop)
+python scripts/playtest.py --blueprint output/blueprint.pkl --seat 0
+
+
 ```
 
 ## Game Parameters (from formulation)

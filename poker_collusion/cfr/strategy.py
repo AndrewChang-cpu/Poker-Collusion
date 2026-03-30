@@ -2,43 +2,51 @@
 Regret matching and average strategy extraction for CFR.
 """
 
-from __future__ import annotations
-
-from typing import Sequence, Union
-
+import os
+import pickle
 import numpy as np
+from poker_collusion.config import NUM_ACTIONS
 
-RegretLike = Union[Sequence[float], np.ndarray]
 
-
-def regret_matching(regret_sum: RegretLike, num_actions: int) -> np.ndarray:
-    """
-    Convert cumulative regrets to strategy probabilities.
-    positive_regret[a] = max(regret_sum[a], 0); then normalize.
-    If sum(positive) == 0, return uniform.
-    """
-    if num_actions <= 0:
-        return np.array([])
+def regret_matching(regret_sum, num_actions):
+    if num_actions <= 0: return np.array([])
     regrets = np.asarray(regret_sum) if len(regret_sum) >= num_actions else np.zeros(num_actions)
-    if len(regrets) < num_actions:
-        regrets = np.resize(regrets, num_actions)
     positive = np.maximum(regrets[:num_actions], 0)
     total = positive.sum()
-    if total > 0:
-        return positive / total
-    return np.ones(num_actions) / num_actions
+    return positive / total if total > 0 else np.ones(num_actions) / num_actions
 
 
-def get_average_strategy(strategy_sum: RegretLike, num_actions: int) -> np.ndarray:
-    """
-    Normalized cumulative strategy = blueprint.
-    If sum is 0, return uniform.
-    """
-    s = np.asarray(strategy_sum)
-    if len(s) < num_actions:
-        s = np.resize(s, num_actions)
-    s = s[:num_actions]
+def get_average_strategy(strategy_sum, num_actions):
+    s = np.asarray(strategy_sum)[:num_actions]
     total = s.sum()
-    if total > 0:
-        return s / total
-    return np.ones(num_actions) / num_actions
+    return s / total if total > 0 else np.ones(num_actions) / num_actions
+
+
+class Strategy:
+    def __init__(self, strategy_sum=None, action_map=None):
+        self.strategy_sum = strategy_sum or {}
+        self.action_map = action_map or {}
+
+    @classmethod
+    def load(cls, path):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Strategy file not found: {path}")
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        return cls(strategy_sum=data.get("strategy_sum", {}), action_map=data.get("action_map", {}))
+
+    def get_action_probabilities(self, info_key, legal_actions):
+        # Fix: Convert to tuple to ensure hashability
+        if isinstance(info_key, list):
+            info_key = tuple(info_key)
+            
+        if info_key not in self.strategy_sum:
+            return np.ones(len(legal_actions)) / len(legal_actions)
+
+        s = self.strategy_sum[info_key]
+        s_sub = np.array([s[a] if a < len(s) else 0.0 for a in legal_actions])
+        return get_average_strategy(s_sub, len(legal_actions))
+
+    def sample_action(self, info_key, legal_actions):
+        probs = self.get_action_probabilities(info_key, legal_actions)
+        return np.random.choice(legal_actions, p=probs)

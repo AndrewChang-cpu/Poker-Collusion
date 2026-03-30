@@ -154,4 +154,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import sysconfig
+    status = sysconfig.get_config_var("Py_GIL_DISABLED")
+    if status is None:
+        print("GIL cannot be disabled")
+    if status == 0:
+        print("GIL is active")
+    if status == 1:
+        print("GIL is disabled")
+
     main()
