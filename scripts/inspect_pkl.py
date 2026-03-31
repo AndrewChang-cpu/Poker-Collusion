@@ -34,9 +34,35 @@ def _fmt_int(x: int) -> str:
 def _safe_items(d: Dict[Any, Any], n: int) -> List[Tuple[Any, Any]]:
     if n <= 0:
         return []
+    # Prefer a diverse sample across bucket ids (first element of infoset key),
+    # falling back to a deterministic ordering.
     items = list(d.items())
     items.sort(key=lambda kv: repr(kv[0]))
-    return items[:n]
+
+    picked: List[Tuple[Any, Any]] = []
+    seen_buckets = set()
+
+    # First pass: one per distinct bucket (if key shape matches)
+    for k, v in items:
+        if len(picked) >= n:
+            break
+        if isinstance(k, tuple) and k:
+            b = k[0]
+            if b in seen_buckets:
+                continue
+            seen_buckets.add(b)
+        picked.append((k, v))
+
+    # Second pass: fill remaining slots
+    if len(picked) < n:
+        for k, v in items:
+            if len(picked) >= n:
+                break
+            if (k, v) in picked:
+                continue
+            picked.append((k, v))
+
+    return picked
 
 
 def _to_floats(x: Any) -> List[float]:

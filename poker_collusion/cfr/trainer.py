@@ -82,7 +82,7 @@ class CFRTrainer:
         """Return strategy distribution over legal_actions (length len(legal_actions))."""
         regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
         if len(regrets_full) < NUM_ACTIONS:
-            regrets_full = np.resize(regrets_full, NUM_ACTIONS)
+            regrets_full = np.pad(regrets_full, (0, NUM_ACTIONS - len(regrets_full)))
         regrets_sub = np.array([regrets_full[a] for a in legal_actions])
         return regret_matching(regrets_sub, len(legal_actions))
 
@@ -94,7 +94,7 @@ class CFRTrainer:
             return None
         s = self.strategy_sum[info_key]
         if len(s) < NUM_ACTIONS:
-            s = np.resize(s, NUM_ACTIONS)
+            s = np.pad(s, (0, NUM_ACTIONS - len(s)))
         if legal_actions is not None:
             s_sub = np.array([s[a] for a in legal_actions])
             return get_average_strategy(s_sub, len(legal_actions))
@@ -149,7 +149,13 @@ class CFRTrainer:
                 values[i] = self.cfr_traverse(next_state, traverser)
                 self.debugger.pop_branch()
 
-            ev = float(strategy @ values)
+            if pruned.any():
+                s_masked = strategy.copy()
+                s_masked[pruned] = 0.0
+                s_total = s_masked.sum()
+                ev = float((s_masked / s_total) @ values) if s_total > 0 else 0.0
+            else:
+                ev = float(strategy @ values)
             regret_update = values - ev
             regret_update[pruned] = 0.0
             weight = self._iteration_weight()

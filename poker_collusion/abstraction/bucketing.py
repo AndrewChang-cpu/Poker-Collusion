@@ -6,7 +6,8 @@ Loads precomputed tables from data/ when available; fallback to 0.
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Sequence
+import random
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from poker_collusion.config import (
     PREFLOP_BUCKETS,
@@ -24,6 +25,7 @@ _preflop_table: Optional[Dict[int, int]] = None
 _flop_centers: Optional[List[float]] = None
 _turn_centers: Optional[List[float]] = None
 _river_centers: Optional[List[float]] = None
+_equity_cache: Dict[Tuple, float] = {}
 
 
 def _path(filename: str) -> str:
@@ -149,18 +151,32 @@ def _estimate_equity(
     hole_cards: Sequence[int],
     board: Sequence[int],
     board_len: int,
-    n_rollouts: int = 100,
+    n_rollouts: int = 1000,
 ) -> float:
-    """Monte Carlo equity estimate vs random opponent (0..1)."""
-    import random
+    """
+    Deterministic, cached Monte Carlo equity estimate vs random opponent (0..1).
+    The same (hole_cards, board) always returns the same value within and across
+    calls, regardless of global random state.
+    """
     from poker_collusion.env.hand_eval import evaluate_hand
+    cache_key: Tuple = (tuple(sorted(hole_cards)), tuple(sorted(board[:board_len])))
+    if cache_key in _equity_cache:
+        return _equity_cache[cache_key]
+
+    # Derive a deterministic seed from the card values — avoids PYTHONHASHSEED randomisation.
+    seed = 0
+    for v in cache_key[0] + cache_key[1]:
+        seed = seed * 53 + int(v) + 1
+    seed &= 0xFFFFFFFF
+    rng = random.Random(seed)
+
     used = set(hole_cards) | set(board[:board_len])
     deck = [c for c in range(52) if c not in used]
     cards_needed = 5 - board_len
-    wins = 0
+    wins = 0.0
     for _ in range(n_rollouts):
         rest = list(deck)
-        random.shuffle(rest)
+        rng.shuffle(rest)
         opp = tuple(rest[:2])
         runout = rest[2:2 + cards_needed]
         full_board = list(board[:board_len]) + list(runout)
@@ -169,7 +185,9 @@ def _estimate_equity(
         my_hand = evaluate_hand(list(hole_cards) + full_board)
         opp_hand = evaluate_hand(list(opp) + full_board)
         if my_hand > opp_hand:
-            wins += 1
+            wins += 1.0
         elif my_hand == opp_hand:
             wins += 0.5
-    return wins / n_rollouts
+    result = wins / n_rollouts
+    _equity_cache[cache_key] = result
+    return result
