@@ -203,6 +203,7 @@ def _run_out_board_and_resolve(state):
         for _ in range(n):
             state.board.append(state.deck[state.deck_idx])
             state.deck_idx += 1
+        state.action_history = state.action_history + (DEAL,)
         state.round_idx += 1
     _resolve_hand(state)
 
