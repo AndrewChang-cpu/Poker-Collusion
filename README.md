@@ -1,6 +1,8 @@
-# Poker Collusion: Pluribus-Style Blueprint via MCCFR
+# Poker Collusion: Pluribus-Style Blueprint via MCCFR (+ Online Search)
 
 3-player No-Limit Texas Hold'em blueprint strategy via Monte Carlo Counterfactual Regret Minimization (MCCFR), matching the spec in `PROJECT_FORMULATION.md`.
+
+This repo also includes a Pluribus-style **online real-time search** agent (`PluribusBot`) that plays **blueprint on preflop** and uses a **depth-limited subgame CFR solver** postflop.
 
 ## Project Structure
 
@@ -22,13 +24,20 @@ poker_collusion/
 ├── cfr/
 │   ├── trainer.py         # MCCFR external sampling, Linear CFR, pruning
 │   └── strategy.py       # Regret matching, average strategy
+├── search/                # Pluribus-style online search (postflop)
+    ├── reach.py           # ReachTracker (1326 hole-card pair probs)
+    ├── continuation.py    # Continuation strategies at depth-limit leaves
+    ├── solver.py          # Depth-limited subgame CFR solver (bucket caching)
+    ├── bot.py             # PluribusBot (blueprint preflop, search postflop)
+    └── play.py            # Multi-bot play harness + mbb/g reporting
 └── evaluation/
     └── mbbg.py            # Self-play, mbb/g, block bootstrap SE
 
 scripts/
 ├── build_buckets.py       # Build preflop + postflop bucket tables
 ├── train.py               # Run MCCFR, save blueprint
-└── evaluate.py            # Load blueprint, report mbb/g
+├── evaluate.py            # Load blueprint, report mbb/g
+└── play.py                # PluribusBot match play (self-play / vs amateur / rotate)
 ```
 
 ## Usage
@@ -42,6 +51,9 @@ python scripts/build_buckets.py --postflop-samples 5000 --postflop-rollouts 200
 # 2. Train blueprint
 python scripts/train.py --iterations 10000 --out output/blueprint.pkl
 
+# Optional: stop Linear CFR discounting after a cutoff (default: 10,000)
+python scripts/train.py --iterations 10000 --out output/blueprint.pkl --linear-cfr-cutoff 10000
+
 # Optional: save a checkpoint every N iterations (e.g. every 2000)
 python scripts/train.py --iterations 10000 --out output/blueprint.pkl --checkpoint-every 2000
 # Writes output/blueprint_2000.pkl, output/blueprint_4000.pkl, ... and final to output/blueprint.pkl
@@ -52,11 +64,19 @@ python scripts/train.py --load output/blueprint.pkl --iterations 5000 --out outp
 # 3. Evaluate
 python scripts/evaluate.py --strategy output/blueprint.pkl --hands 50000
 
-# Validate playtest functions
-python scripts/playtest.py --blueprint output/blueprint.pkl --seat 0 --dry-run
+# 4. Online play (PluribusBot)
+# 3 PluribusBot self-play
+python scripts/play.py --strategy output/blueprint.pkl --hands 100
 
-# Test as the Button (first to act preflop)
-python scripts/playtest.py --blueprint output/blueprint.pkl --seat 0
+# 1 PluribusBot vs 2 amateurs
+python scripts/play.py --vs-amateur --strategy output/blueprint.pkl --hands 100
+
+# Rotate PluribusBot through all seats vs amateurs
+python scripts/play.py --vs-amateur --rotate --strategy output/blueprint.pkl --hands 100
+
+# Tune search parameters
+python scripts/play.py --vs-amateur --strategy output/blueprint.pkl --hands 100 \
+    --cfr-iters 200 --depth-limit 3 --leaf-rollouts 10 --bias-factor 4.0
 
 
 ```
