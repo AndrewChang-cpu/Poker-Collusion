@@ -173,7 +173,7 @@ def _is_round_complete(state):
             return False
 
     # Condition 3: if there was a raise, everyone has acted after the last raise
-    if state.last_raiser >= 0 and state.last_raiser in can_act:
+    if state.last_raiser >= 0:
         street_start = _street_start_index(state)
         street_action_history = [a for a in state.action_history[street_start:] if a != DEAL]
         assert len(street_action_history) == len(street_acts), (
