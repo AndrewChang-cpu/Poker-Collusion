@@ -236,12 +236,18 @@ def _resolve_side_pots(state, active_players, contributions):
             prev = level
             continue
         best_hand = None
-        winner = None
+        winners = []
         for p in eligible_win:
             h = evaluate_hand(state.hole_cards[p] + state.board)
             if best_hand is None or h > best_hand:
                 best_hand = h
-                winner = p
-        assert winner is not None
-        state.stacks = state.stacks[:winner] + (state.stacks[winner] + slice_size,) + state.stacks[winner + 1:]
+                winners = [p]
+            elif h == best_hand:
+                winners.append(p)
+        assert len(winners) > 0
+        share = slice_size / len(winners)
+        stacks = list(state.stacks)
+        for w in winners:
+            stacks[w] += share
+        state.stacks = tuple(stacks)
         prev = level
