@@ -89,3 +89,18 @@ def deal_new_hand():
 def get_payoffs(state):
     """Net profit in BB for each player (stacks - 20). Only valid when state.done."""
     return [state.stacks[p] - STARTING_STACK_BB for p in range(NUM_PLAYERS)]
+
+
+def reconstruct_actor_history(state):
+    """
+    Recover the acting player for each non-DEAL action from undo_stack snapshots
+    (parallel indices with action_history). Used by CFR debug history line and playtest.
+    """
+    actors = []
+    for i, a in enumerate(state.action_history):
+        if a == DEAL:
+            continue
+        entry = state.undo_stack[i]
+        if isinstance(entry, dict):
+            actors.append(entry["current_player"])
+    return actors

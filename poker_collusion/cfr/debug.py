@@ -21,111 +21,61 @@ and chance outcomes (shown only in the recap) before the next traverser pause.
 
 from __future__ import annotations
 
-import re
 import sys
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
 from poker_collusion.config import NUM_PLAYERS
-from poker_collusion.abstraction.actions import PREFLOP_RAISE_BB, POSTFLOP_POT_MULT
-from poker_collusion.env.game_state import DEAL
+from poker_collusion.terminal_display import (
+    RESET,
+    BOLD,
+    DIM,
+    RED,
+    GREEN,
+    YELLOW,
+    CYAN,
+    MAGENTA,
+    strip_ansi,
+    format_action_label,
+    format_bar,
+    print_nlhe_state,
+    print_state_history,
+    print_blank,
+    print_field,
+    print_heading_centered,
+    print_rule_line,
+    STREET_NAMES,
+)
 
-# ── ANSI ──────────────────────────────────────────────────────────────────────
-RESET   = "\033[0m"
-BOLD    = "\033[1m"
-DIM     = "\033[2m"
-RED     = "\033[91m"
-GREEN   = "\033[92m"
-YELLOW  = "\033[93m"
-BLUE    = "\033[94m"
-MAGENTA = "\033[95m"
-CYAN    = "\033[96m"
-
-def _strip(s):
-    """Remove ANSI codes to get printable length."""
-    return re.sub(r'\033\[[0-9;]*m', '', s)
-
-# ── Card rendering ─────────────────────────────────────────────────────────────
-_RANKS = "23456789TJQKA"
-_SUITS = "♠♥♦♣"
-_SUIT_COLOR = [CYAN, RED, RED, CYAN]   # ♠ ♥ ♦ ♣
-
-def _card(c):
-    r = _RANKS[c % 13]
-    s = _SUITS[c // 13]
-    col = _SUIT_COLOR[c // 13]
-    return f"{col}{BOLD}{r}{s}{RESET}"
-
-def _hand(cards):
-    return "  ".join(_card(c) for c in cards) if cards else f"{DIM}--{RESET}"
-
-# ── Action labels ──────────────────────────────────────────────────────────────
+# ── Layout (CFR recap uses wider rules than the 20-col table) ─────────────────
 _SEATS = ["BTN", "SB ", "BB "]
-_STREET = ("Preflop", "Flop", "Turn", "River")
 _RECAP_W = 78
-
-def _action_label(idx, round_idx):
-    if idx == 0: return "Fold"
-    if idx == 1: return "Check/Call"
-    if idx == 9: return "All-in"
-    if round_idx == 0:
-        bb = PREFLOP_RAISE_BB[idx - 2]
-        return f"Raise {bb:g}BB"
-    pct = int(POSTFLOP_POT_MULT[idx - 2] * 100)
-    return f"Bet {pct}%pot"
-
-
-def _history_str(action_history, actor_history):
-    """Render action_history as a readable string using actor_history for player labels."""
-    assert len(actor_history) == sum(1 for a in action_history if a != DEAL), (
-        f"actor_history length {len(actor_history)} does not match "
-        f"non-DEAL entries in action_history ({sum(1 for a in action_history if a != DEAL)})"
-    )
-    ri = 0
-    parts = []
-    actor_idx = 0
-    street_names = {1: "Flop", 2: "Turn", 3: "River"}
-    for a in action_history:
-        if a == DEAL:
-            ri += 1
-            name = street_names.get(ri, f"Street{ri}")
-            parts.append(f"{DIM}[{name}]{RESET}")
-        else:
-            label = _action_label(a, ri)
-            who = f"P{actor_history[actor_idx]}"
-            actor_idx += 1
-            parts.append(f"{DIM}{a}{RESET}({who} {label})")
-    return " → ".join(parts) if parts else f"{DIM}(preflop start){RESET}"
-
-# ── Progress bar ───────────────────────────────────────────────────────────────
-_BAR_W = 14
-
-def _bar(prob):
-    filled = round(prob * _BAR_W)
-    return f"{GREEN}{'█' * filled}{DIM}{'░' * (_BAR_W - filled)}{RESET}"
-
-# ── Layout helpers ─────────────────────────────────────────────────────────────
 _W = 20
-_HEAVY = "━" * _W
 _LIGHT = "─" * _W
 
-def _print(line=""):
-    print(line)
+
+def _strip(s: str) -> str:
+    return strip_ansi(s)
+
 
 def _heading(label, color=MAGENTA):
-    pad = (_W - len(_strip(label))) // 2
-    print(f"{' ' * pad}{color}{BOLD}{label}{RESET}")
+    print_heading_centered(label, color=color, width=_W)
+
 
 def _rule(char="━"):
-    print(char * _W)
+    if len(char) > 1:
+        print(char)
+    else:
+        print(char * _W)
+
 
 def _field(key, value, indent=1):
-    prefix = "  " * indent
-    print(f"{prefix}{DIM}{key}:{RESET}  {value}")
+    print_field(key, value, indent=indent)
+
 
 def _blank():
-    print()
+    print_blank()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -227,7 +177,7 @@ class CFRDebugger:
                 depth = row["depth"]
                 pl = row["player"]
                 ri = row.get("round_idx_at_node", st.round_idx)
-                street = _STREET[ri] if 0 <= ri < len(_STREET) else f"r{ri}"
+                street = STREET_NAMES[ri] if 0 <= ri < len(STREET_NAMES) else f"r{ri}"
                 ev = row["ev"]
                 w = row["weight"]
                 print(
@@ -325,7 +275,7 @@ class CFRDebugger:
             return
         ri = state.round_idx
         sampled = actions[sampled_idx]
-        label = _action_label(sampled, ri)
+        label = format_action_label(sampled, ri)
         prob = strategy[sampled_idx]
         if self.consolidate:
             self._append_path(
@@ -378,36 +328,10 @@ class CFRDebugger:
     # ── Display helpers ────────────────────────────────────────────────────────
 
     def _print_state(self, state: Any, acting_player: int) -> None:
-        ri = state.round_idx
-
-        # Board
-        board_str = _hand(state.board) if state.board else f"{DIM}(no board yet){RESET}"
-        _field("Board", board_str)
-
-        _blank()
-
-        # Players
-        for p in range(NUM_PLAYERS):
-            cards = _hand(state.hole_cards[p])
-            stack = f"{state.stacks[p]:.1f} BB"
-            if not state.active[p]:
-                status = f"  {RED}FOLDED{RESET}"
-            elif state.all_in[p]:
-                status = f"  {YELLOW}ALL-IN{RESET}"
-            else:
-                status = ""
-            marker = f"  {BOLD}← acting{RESET}" if p == acting_player else ""
-            print(f"  P{p} {_SEATS[p]}  {cards}   {stack}{status}{marker}")
-
-        _blank()
-
-        # Pot / bets
-        bets = "   ".join(f"P{i}={state.bets[i]:.1f}" for i in range(NUM_PLAYERS))
-        _field("Pot", f"{BOLD}{state.pot:.2f} BB{RESET}   street bets: {bets}")
-
-        # History
-        _field("History", _history_str(state.action_history, state.actor_history))
-        _blank()
+        print_nlhe_state(
+            state, acting_player, hole_visible=[True] * NUM_PLAYERS
+        )
+        print_state_history(state)
 
     def _print_strategy(
         self,
@@ -418,8 +342,8 @@ class CFRDebugger:
         ri = state.round_idx
         print(f"  {BOLD}Actions & current strategy:{RESET}")
         for a, prob in zip(actions, strategy):
-            label = _action_label(a, ri)
-            bar = _bar(prob)
+            label = format_action_label(a, ri)
+            bar = format_bar(prob)
             pct = f"{prob * 100:5.1f}%"
             # right-align label to 16 chars (visible)
             vis_label = label.ljust(16)
@@ -445,7 +369,7 @@ class CFRDebugger:
         print(header)
         print("  " + "─" * (len(_strip(header)) - 2))
         for i, a in enumerate(actions):
-            label = _action_label(a, ri).ljust(16)
+            label = format_action_label(a, ri).ljust(16)
             val   = f"{values[i]:>+8.3f}"
             reg   = f"{regret_update[i]:>+8.3f}"
             delta = regret_update[i] * weight
