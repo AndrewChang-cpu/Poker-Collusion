@@ -34,6 +34,7 @@ from poker_collusion.config import (
     T_MAX_DEFAULT,
     LOG_INTERVAL,
     USE_LINEAR_CFR,
+    LINEAR_CFR_CUTOFF,
     PRUNE_THRESHOLD,
     PRUNE_WARM_UP_ITERATIONS,
     PRUNE_SKIP_PROBABILITY,
@@ -64,6 +65,8 @@ def main() -> None:
     ap.add_argument("--out", "-o", default="output/blueprint.pkl", help="Output path for final strategy")
     ap.add_argument("--load", "-l", default=None, help="Load existing strategy and continue training (run --iterations more)")
     ap.add_argument("--checkpoint-every", type=int, default=0, metavar="N", help="Save checkpoint every N iterations; --out can use {iter}")
+    ap.add_argument("--linear-cfr-cutoff", type=int, default=LINEAR_CFR_CUTOFF,
+                    help=f"Stop Linear CFR discounting after this iteration (default: {LINEAR_CFR_CUTOFF})")
     ap.add_argument("--no-prune", action="store_true", help="Disable regret pruning")
     ap.add_argument("--eval-hands", type=int, default=EVAL_HANDS_DEFAULT, help="Hands for post-training eval")
     ap.add_argument("--debug", action="store_true", help="Print detailed per-node debug output during traversal")
@@ -94,6 +97,7 @@ def main() -> None:
         game,
         num_players=NUM_PLAYERS,
         use_linear_cfr=USE_LINEAR_CFR,
+        linear_cfr_cutoff=args.linear_cfr_cutoff,
         prune_threshold=None if args.no_prune else PRUNE_THRESHOLD,
         prune_warm_up=PRUNE_WARM_UP_ITERATIONS,
         prune_skip_prob=PRUNE_SKIP_PROBABILITY,

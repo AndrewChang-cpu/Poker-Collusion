@@ -69,7 +69,7 @@ def get_bucket(
     _load_tables()
     if round_idx == 0:
         if _preflop_table is not None:
-            canonical = _hole_to_canonical(hole_cards)
+            canonical = hole_to_canonical(hole_cards)
             return _preflop_table.get(canonical, 0) % PREFLOP_BUCKETS
         return _preflop_fallback(hole_cards) % PREFLOP_BUCKETS
     if round_idx == 1 and len(board) >= 3:
@@ -87,7 +87,7 @@ def get_bucket(
     return 0
 
 
-def _hole_to_canonical(hole_cards: Sequence[int]) -> int:
+def hole_to_canonical(hole_cards: Sequence[int]) -> int:
     """Map 2 cards to 169 canonical hand id (0..168). Matches bucketing_build.preflop_table."""
     r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
     s0, s1 = hole_cards[0] // 13, hole_cards[1] // 13
@@ -156,17 +156,13 @@ def _estimate_equity(
     from poker_collusion.env.hand_eval import evaluate_hand
     used = set(hole_cards) | set(board[:board_len])
     deck = [c for c in range(52) if c not in used]
+    cards_needed = 5 - board_len
     wins = 0
     for _ in range(n_rollouts):
         rest = list(deck)
         random.shuffle(rest)
         opp = tuple(rest[:2])
-        if board_len == 3:
-            runout = rest[2:7]
-        elif board_len == 4:
-            runout = rest[2:6]
-        else:
-            runout = []
+        runout = rest[2:2 + cards_needed]
         full_board = list(board[:board_len]) + list(runout)
         if len(full_board) < 5:
             continue

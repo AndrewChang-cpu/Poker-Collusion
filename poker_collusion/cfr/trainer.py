@@ -18,6 +18,7 @@ from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.cfr.debug import CFRDebugger
 from poker_collusion.config import (
     NUM_ACTIONS,
+    LINEAR_CFR_CUTOFF,
     PRUNE_THRESHOLD,
     PRUNE_WARM_UP_ITERATIONS,
     PRUNE_SKIP_PROBABILITY,
@@ -39,6 +40,7 @@ class CFRTrainer:
         game_module: CFRGame,
         num_players: int = 3,
         use_linear_cfr: bool = True,
+        linear_cfr_cutoff: int = LINEAR_CFR_CUTOFF,
         prune_threshold: Optional[float] = PRUNE_THRESHOLD,
         prune_warm_up: int = PRUNE_WARM_UP_ITERATIONS,
         prune_skip_prob: float = PRUNE_SKIP_PROBABILITY,
@@ -49,6 +51,7 @@ class CFRTrainer:
         self.game = game_module
         self.num_players = num_players
         self.use_linear_cfr = use_linear_cfr
+        self.linear_cfr_cutoff = linear_cfr_cutoff
         self.prune_threshold = prune_threshold
         self.prune_warm_up = prune_warm_up
         self.prune_skip_prob = prune_skip_prob
@@ -62,6 +65,18 @@ class CFRTrainer:
         self.strategy_sum: StrategyTable = {}
         self.action_map: ActionMap = {}
         self.iteration: int = 0
+
+    def _iteration_weight(self, t: Optional[int] = None) -> float:
+        """Return the weight for iteration *t* (defaults to self.iteration).
+
+        With Linear CFR active and t <= cutoff, the weight is t (Linear CFR).
+        Beyond the cutoff (or with Linear CFR disabled), the weight is 1.
+        """
+        if t is None:
+            t = self.iteration
+        if self.use_linear_cfr and t <= self.linear_cfr_cutoff:
+            return float(t)
+        return 1.0
 
     def get_strategy(self, info_key: InfoKey, legal_actions: List[int]) -> np.ndarray:
         """Return strategy distribution over legal_actions (length len(legal_actions))."""
@@ -137,7 +152,7 @@ class CFRTrainer:
             ev = float(strategy @ values)
             regret_update = values - ev
             regret_update[pruned] = 0.0
-            weight = self.iteration if self.use_linear_cfr else 1
+            weight = self._iteration_weight()
 
             if info_key not in self.regret_sum:
                 self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
@@ -340,7 +355,7 @@ class CFRTrainer:
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
             for t in tqdm(range(start + 1, end + 1), desc="Training (parallel)..."):
                 self.iteration = t
-                weight = float(t) if self.use_linear_cfr else 1.0
+                weight = self._iteration_weight(t)
 
                 # Deal all hands on the main thread (uses global np.random, must stay serial)
                 jobs = [
@@ -410,10 +425,15 @@ class CFRTrainer:
     def _compute_avg_regret(self) -> float:
         if not self.regret_sum or self.iteration == 0:
             return 0.0
+        t = self.iteration
+        c = self.linear_cfr_cutoff
         if self.use_linear_cfr:
-            sum_weights = (self.iteration * (self.iteration + 1)) / 2
+            if t <= c:
+                sum_weights = (t * (t + 1)) / 2
+            else:
+                sum_weights = (c * (c + 1)) / 2 + (t - c)
         else:
-            sum_weights = self.iteration
+            sum_weights = t
         total_pos = sum(np.maximum(regrets, 0).mean() for regrets in self.regret_sum.values())
         return (total_pos / len(self.regret_sum)) / sum_weights
 
@@ -435,6 +455,7 @@ class CFRTrainer:
                 "strategy_sum": self.strategy_sum,
                 "action_map": self.action_map,
                 "iteration": self.iteration,
+                "linear_cfr_cutoff": self.linear_cfr_cutoff,
             }, f)
         print(f"\nSaved to {path}")
 
@@ -446,4 +467,6 @@ class CFRTrainer:
         self.strategy_sum = data["strategy_sum"]
         self.action_map = data["action_map"]
         self.iteration = data["iteration"]
+        if "linear_cfr_cutoff" in data:
+            self.linear_cfr_cutoff = data["linear_cfr_cutoff"]
         print(f"Loaded from {path} (iter {self.iteration})")
