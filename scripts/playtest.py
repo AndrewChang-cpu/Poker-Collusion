@@ -79,7 +79,7 @@ def main():
 
     while not is_terminal(state) and actions_taken < MAX_ACTIONS:
         if is_chance_node(state):
-            sample_chance(state)
+            state = sample_chance(state)
             ri = min(state.round_idx, len(STREET_NAMES) - 1)
             print_playtest_banner(f"{STREET_NAMES[ri]} dealt", state.board)
             continue
@@ -106,7 +106,7 @@ def main():
                 f"\n  Bot P{p} chooses: {get_action_description(state, action)}"
             )
 
-        apply_action(state, action)
+        state = apply_action(state, action)
         actions_taken += 1
 
     print_showdown_footer()

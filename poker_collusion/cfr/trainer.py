@@ -128,8 +128,10 @@ class CFRTrainer:
                 if self._should_prune(info_key, action):
                     values[i] = 0.0
                     continue
+                self.debugger.push_branch(action)
                 next_state = self.game.apply_action(state, action)
                 values[i] = self.cfr_traverse(next_state, traverser)
+                self.debugger.pop_branch()
 
             ev = float(strategy @ values)
             regret_update = values - ev

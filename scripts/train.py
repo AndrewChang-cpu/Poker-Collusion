@@ -67,7 +67,7 @@ def main() -> None:
     ap.add_argument("--no-prune", action="store_true", help="Disable regret pruning")
     ap.add_argument("--eval-hands", type=int, default=EVAL_HANDS_DEFAULT, help="Hands for post-training eval")
     ap.add_argument("--debug", action="store_true", help="Print detailed per-node debug output during traversal")
-    ap.add_argument("--step", action="store_true", help="Pause at each traverser node (implies --debug)")
+    ap.add_argument("--step", action="store_true", help="Pause after each depth level in the traversal recap (implies --debug)")
     ap.add_argument(
         "--debug-stream",
         action="store_true",
