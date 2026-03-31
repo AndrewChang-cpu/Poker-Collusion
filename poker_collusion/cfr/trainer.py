@@ -124,9 +124,10 @@ class CFRTrainer:
             )
 
             values = np.zeros(len(actions))
+            pruned = np.zeros(len(actions), dtype=bool)
             for i, action in enumerate(actions):
                 if self._should_prune(info_key, action):
-                    values[i] = 0.0
+                    pruned[i] = True
                     continue
                 self.debugger.push_branch(action)
                 next_state = self.game.apply_action(state, action)
@@ -135,6 +136,7 @@ class CFRTrainer:
 
             ev = float(strategy @ values)
             regret_update = values - ev
+            regret_update[pruned] = 0.0
             weight = self.iteration if self.use_linear_cfr else 1
 
             if info_key not in self.regret_sum:
@@ -225,15 +227,17 @@ class CFRTrainer:
 
         if player == traverser:
             values = np.zeros(len(actions))
+            pruned = np.zeros(len(actions), dtype=bool)
             for i, action in enumerate(actions):
                 if self._should_prune_local(info_key, action, rng):
-                    values[i] = 0.0
+                    pruned[i] = True
                     continue
                 next_state = self.game.apply_action(state, action)
                 values[i] = self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am)
 
             ev = float(strategy @ values)
             regret_update = values - ev
+            regret_update[pruned] = 0.0
 
             if info_key not in delta_r:
                 delta_r[info_key] = np.zeros(NUM_ACTIONS)
