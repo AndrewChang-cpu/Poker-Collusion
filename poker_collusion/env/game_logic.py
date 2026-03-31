@@ -94,9 +94,10 @@ def apply_action(state, action_index):
         s.stacks = s.stacks[:p] + (new_stack,) + s.stacks[p + 1:]
         s.bets = s.bets[:p] + (total_bet,) + s.bets[p + 1:]
         s.pot += add
-        if add > 0 and total_bet > max(s.bets[q] for q in range(NUM_PLAYERS) if q != p):
+        prev_max = max(s.bets[q] for q in range(NUM_PLAYERS) if q != p)
+        if add > 0 and total_bet > prev_max:
             s.last_raiser = p
-            s.last_raise_amount = add
+            s.last_raise_amount = total_bet - prev_max
         if new_stack <= 0:
             s.all_in = s.all_in[:p] + (True,) + s.all_in[p + 1:]
 
