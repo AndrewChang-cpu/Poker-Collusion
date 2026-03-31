@@ -62,16 +62,21 @@ def apply_action(state, action_index):
 
 def _advance_to_next_player(state):
     can_act = [i for i in range(NUM_PLAYERS) if state.active[i] and not state.all_in[i]]
-    if len(can_act) <= 1:
+    # Only run out when nobody can bet anymore (everyone still in is all-in).
+    # If len(can_act)==1, that player may still need to call/fold to an all-in — do not skip them.
+    if len(can_act) == 0:
         _run_out_board_and_resolve(state)
-    elif _is_round_complete(state):
-        if state.round_idx >= 3: _resolve_hand(state)
-        else: state.chance_pending, state.current_player = True, -1
-    else:
-        next_p = (state.current_player + 1) % NUM_PLAYERS
-        while not state.active[next_p] or state.all_in[next_p]:
-            next_p = (next_p + 1) % NUM_PLAYERS
-        state.current_player = next_p
+        return
+    if _is_round_complete(state):
+        if state.round_idx >= 3:
+            _resolve_hand(state)
+        else:
+            state.chance_pending, state.current_player = True, -1
+        return
+    next_p = (state.current_player + 1) % NUM_PLAYERS
+    while not state.active[next_p] or state.all_in[next_p]:
+        next_p = (next_p + 1) % NUM_PLAYERS
+    state.current_player = next_p
 
 def _is_round_complete(state):
     can_act = [i for i in range(NUM_PLAYERS) if state.active[i] and not state.all_in[i]]
