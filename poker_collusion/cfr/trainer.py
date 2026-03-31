@@ -357,7 +357,7 @@ class CFRTrainer:
                 self._merge_deltas(results)
 
                 if log_interval and t % log_interval == 0:
-                    avg_regret = self._compute_avg_regret(batch_size=batch_size)
+                    avg_regret = self._compute_avg_regret()
                     print(
                         f"  Iter {t}/{end} | "
                         f"Info sets: {len(self.regret_sum)} | "
@@ -407,15 +407,13 @@ class CFRTrainer:
 
         print(f"Training complete. {len(self.regret_sum)} info sets.")
 
-    def _compute_avg_regret(self, batch_size: int = 1) -> float:
+    def _compute_avg_regret(self) -> float:
         if not self.regret_sum or self.iteration == 0:
             return 0.0
         if self.use_linear_cfr:
             sum_weights = (self.iteration * (self.iteration + 1)) / 2
         else:
             sum_weights = self.iteration
-        # In parallel mode regret_sum is inflated by batch_size per iteration
-        sum_weights *= batch_size
         total_pos = sum(np.maximum(regrets, 0).mean() for regrets in self.regret_sum.values())
         return (total_pos / len(self.regret_sum)) / sum_weights
 
