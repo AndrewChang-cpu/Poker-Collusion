@@ -93,8 +93,6 @@ def get_legal_action_indices(state):
             if all_in_total >= min_raise_total or to_call > 0:
                 if all_in_total not in seen_totals:
                     legal.append(9)
-                else:
-                    legal.append(9)
 
     return sorted(legal)
 
