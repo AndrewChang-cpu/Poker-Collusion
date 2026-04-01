@@ -256,7 +256,13 @@ class CFRTrainer:
                 next_state = self.game.apply_action(state, action)
                 values[i] = self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am)
 
-            ev = float(strategy @ values)
+            if pruned.any():
+                s_masked = strategy.copy()
+                s_masked[pruned] = 0.0
+                s_total = s_masked.sum()
+                ev = float((s_masked / s_total) @ values) if s_total > 0 else 0.0
+            else:
+                ev = float(strategy @ values)
             regret_update = values - ev
             regret_update[pruned] = 0.0
 

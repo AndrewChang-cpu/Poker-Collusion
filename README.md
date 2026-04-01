@@ -78,6 +78,8 @@ python scripts/play.py --vs-amateur --rotate --strategy output/blueprint.pkl --h
 python scripts/play.py --vs-amateur --strategy output/blueprint.pkl --hands 100 \
     --cfr-iters 200 --depth-limit 3 --leaf-rollouts 10 --bias-factor 4.0
 
+# Plot evaluation curve over multiple .pkl files
+python scripts/eval_curve.py output/blueprint_claude_v3_1800.pkl output/blueprint_claude_v3_1850.pkl output/blueprint_claude_v3_1900.pkl output/blueprint_claude_v3_1950.pkl output/blueprint_claude_v3_2000.pkl --hands 1000 --workers 8 --ci se
 
 ```
 
