@@ -216,6 +216,7 @@ class CFRTrainer:
         delta_r: StrategyTable,
         delta_s: StrategyTable,
         delta_am: ActionMap,
+        _depth: int = 0,
     ) -> float:
         """
         Thread-safe CFR traversal. Reads self.regret_sum (read-only during batch phase).
@@ -223,12 +224,15 @@ class CFRTrainer:
         Uses rng (thread-local Generator) instead of global np.random.
         Debug hooks are absent — incompatible with parallel mode.
         """
+        if _depth > 500:
+            raise RuntimeError(f"CFR traversal depth exceeded: history={state.action_history}")
+
         if self.game.is_terminal(state):
             return self.game.get_payoffs(state)[traverser]
 
         if self.game.is_chance_node(state):
             next_state = self.game.sample_chance(state)
-            return self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am)
+            return self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am, _depth + 1)
 
         player = self.game.get_current_player(state)
         actions = self.game.get_legal_actions(state)
@@ -254,7 +258,7 @@ class CFRTrainer:
                     pruned[i] = True
                     continue
                 next_state = self.game.apply_action(state, action)
-                values[i] = self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am)
+                values[i] = self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am, _depth + 1)
 
             if pruned.any():
                 s_masked = strategy.copy()
@@ -281,7 +285,7 @@ class CFRTrainer:
         else:
             action_idx = int(rng.choice(len(actions), p=strategy))
             next_state = self.game.apply_action(state, actions[action_idx])
-            return self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am)
+            return self._cfr_traverse_local(next_state, traverser, weight, rng, delta_r, delta_s, delta_am, _depth + 1)
 
     def _traverse_worker(
         self,
