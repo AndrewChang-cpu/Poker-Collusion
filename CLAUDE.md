@@ -44,10 +44,17 @@ You are an expert software architect. Write clean, secure, and optimized code wh
   - `strategy.py`: regret matching and average strategy helpers
   - `debug.py`: CFR debug instrumentation
 - `poker_collusion/evaluation/` — evaluation runners and baseline opponent policy.
+- `poker_collusion/search/` — Pluribus online real-time search:
+  - `reach.py`: reach probability tracker (1326-entry vector over hole-card pairs)
+  - `continuation.py`: 4 continuation strategies for subgame leaf evaluation
+  - `solver.py`: depth-limited subgame CFR solver with bucket caching
+  - `bot.py`: `PluribusBot` agent (blueprint on preflop, search on postflop)
+  - `play.py`: multi-bot play harness with mbb/g reporting
 - `scripts/` — executable workflows:
   - `build_buckets.py` (precompute abstraction tables)
   - `train.py` (train/resume/checkpoint blueprint)
   - `evaluate.py` (self-play or vs amateur, optional seat rotation)
+  - `play.py` (PluribusBot match play: self-play, vs amateur, seat rotation)
 - `data/` — generated bucket table artifacts.
 - `output/` — generated trained strategy artifacts.
 - `logs/` — runtime diagnostics and traceback logs.
@@ -118,6 +125,15 @@ Evaluate CFR vs amateur (single seat):
 
 Evaluate CFR vs amateur (seat rotation):
 - `python scripts/evaluate.py --vs-amateur --rotate --strategy output/blueprint.pkl --hands 10000`
+
+Run PluribusBot vs amateurs:
+- `python scripts/play.py --vs-amateur --strategy output/blueprint.pkl --hands 100`
+
+Run PluribusBot seat rotation:
+- `python scripts/play.py --vs-amateur --rotate --strategy output/blueprint.pkl --hands 100`
+
+Tune search parameters:
+- `python scripts/play.py --vs-amateur --strategy output/blueprint.pkl --hands 100 --cfr-iters 200 --depth-limit 3`
 
 
 ## Extended Capabilities
