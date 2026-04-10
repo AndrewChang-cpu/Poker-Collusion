@@ -81,6 +81,7 @@ def apply_action(state, action_index):
 
     s = state.copy()
     is_fold, total_bet = action_index_to_chips(s, action_index)
+    total_bet = round(total_bet, 1)
 
     s.action_history = s.action_history + (action_index,)
     s.actor_history = s.actor_history + (p,)
@@ -90,7 +91,7 @@ def apply_action(state, action_index):
     else:
         add = total_bet - s.bets[p]
         assert add >= 0, f"apply_action: negative chip addition {add} for player {p}"
-        new_stack = s.stacks[p] - add
+        new_stack = round(s.stacks[p] - add, 1)
         s.stacks = s.stacks[:p] + (new_stack,) + s.stacks[p + 1:]
         s.bets = s.bets[:p] + (total_bet,) + s.bets[p + 1:]
         s.pot += add
