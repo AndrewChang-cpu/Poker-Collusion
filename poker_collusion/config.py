@@ -32,6 +32,10 @@ PRUNE_THRESHOLD = -10_000_000
 PRUNE_WARM_UP_ITERATIONS = 10_000
 PRUNE_SKIP_PROBABILITY = 0.95
 
+# Team objective hyperparameters
+SMOOTH_LAMBDA: float = 1.0
+RISK_OFFSET: float = 21.0   # must exceed max loss (STARTING_STACK_BB = 20)
+
 # Bucket table paths (relative to project root or data/)
 DEFAULT_BUCKET_DIR = "data"
 PREFLOP_BUCKETS_FILE = "preflop_buckets.pkl"

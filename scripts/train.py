@@ -90,9 +90,57 @@ def main() -> None:
         metavar="N",
         help=f"Traversals per logical iteration in parallel mode (default: {PARALLEL_BATCH_SIZE}, should be multiple of 3)",
     )
+    ap.add_argument(
+        "--team-seats",
+        type=str,
+        default=None,
+        metavar="SEATS",
+        help="Comma-separated seat indices for colluding team (e.g. 0,1). Enables team MCCFR.",
+    )
+    ap.add_argument(
+        "--frozen-strategy",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to frozen opponent blueprint .pkl (required when --team-seats is set).",
+    )
+    ap.add_argument(
+        "--team-objective",
+        type=str,
+        default="utilitarian",
+        choices=["utilitarian", "maxmin", "smooth", "risk"],
+        help="Team value function: utilitarian (sum), maxmin (min), smooth (sum + lambda*min), risk (sum of log). Default: utilitarian.",
+    )
     args = ap.parse_args()
 
+    # Parse team seats
+    team_seats = None
+    frozen_trainer = None
+    team_objective = args.team_objective
+    if team_objective != "utilitarian" and args.team_seats is None:
+        print("Error: --team-objective requires --team-seats.")
+        sys.exit(1)
+    if args.team_seats is not None:
+        team_seats = [int(s.strip()) for s in args.team_seats.split(",")]
+        for s in team_seats:
+            if s < 0 or s >= NUM_PLAYERS:
+                print(f"Error: invalid seat {s} in --team-seats (must be 0..{NUM_PLAYERS - 1})")
+                sys.exit(1)
+        if not args.frozen_strategy:
+            print("Error: --frozen-strategy is required when --team-seats is set.")
+            sys.exit(1)
+        frozen_path = os.path.join(ROOT, args.frozen_strategy)
+        if not os.path.isfile(frozen_path):
+            print(f"Error: frozen strategy not found: {frozen_path}")
+            sys.exit(1)
+
     game = GameModule()
+
+    if args.team_seats is not None:
+        frozen_trainer = CFRTrainer(game, num_players=NUM_PLAYERS)
+        frozen_trainer.load(frozen_path)
+        print(f"Frozen opponent: {args.frozen_strategy} (iter {frozen_trainer.iteration})")
+
     trainer = CFRTrainer(
         game,
         num_players=NUM_PLAYERS,
@@ -104,6 +152,9 @@ def main() -> None:
         debug=args.debug or args.step,
         debug_step=args.step,
         debug_consolidate=not args.debug_stream,
+        team_seats=team_seats,
+        frozen_trainer=frozen_trainer,
+        team_objective=team_objective,
     )
 
     if args.load:
@@ -117,7 +168,11 @@ def main() -> None:
         print("Starting from scratch.")
 
     print("=" * 60)
-    print("3-Player NLHE — MCCFR Blueprint Training")
+    if team_seats is not None:
+        frozen_seats = [s for s in range(NUM_PLAYERS) if s not in team_seats]
+        print(f"3-Player NLHE — Team MCCFR (team={team_seats}, frozen={frozen_seats}, objective={team_objective})")
+    else:
+        print("3-Player NLHE — MCCFR Blueprint Training")
     print("=" * 60)
 
     out_path = os.path.join(ROOT, args.out)

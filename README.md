@@ -81,6 +81,14 @@ python scripts/play.py --vs-amateur --strategy output/blueprint.pkl --hands 100 
 # Plot evaluation curve over multiple .pkl files
 python scripts/eval_curve.py output/blueprint_claude_v3_1800.pkl output/blueprint_claude_v3_1850.pkl output/blueprint_claude_v3_1900.pkl output/blueprint_claude_v3_1950.pkl output/blueprint_claude_v3_2000.pkl --hands 1000 --workers 8 --ci se
 
+# 5. Team MCCFR (collusion training)
+# Train seats 0,1 as a team against a frozen opponent blueprint at seat 2
+python3t scripts/train.py --log-interval 1 --out output/blueprint_v4.pkl \
+    --checkpoint-every 100 --workers 8 --batch-size 24 \
+    --team-seats 0,1 --frozen-strategy output/blueprint_claude_v3_32100.pkl \
+    --team-objective utilitarian
+# --team-objective choices: utilitarian (default), maxmin, smooth, risk
+
 ```
 
 ## Game Parameters (from formulation)

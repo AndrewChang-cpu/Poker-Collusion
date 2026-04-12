@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from tqdm import tqdm
@@ -24,6 +24,8 @@ from poker_collusion.config import (
     PRUNE_SKIP_PROBABILITY,
     PARALLEL_WORKERS,
     PARALLEL_BATCH_SIZE,
+    SMOOTH_LAMBDA,
+    RISK_OFFSET,
 )
 from poker_collusion.typing_defs import CFRGame
 from poker_collusion.env.game_state import NLHEState
@@ -47,6 +49,9 @@ class CFRTrainer:
         debug: bool = False,
         debug_step: bool = False,
         debug_consolidate: bool = True,
+        team_seats: Optional[List[int]] = None,
+        frozen_trainer: Optional['CFRTrainer'] = None,
+        team_objective: str = "utilitarian",
     ) -> None:
         self.game = game_module
         self.num_players = num_players
@@ -60,6 +65,16 @@ class CFRTrainer:
             step=debug_step,
             consolidate=debug_consolidate,
         )
+
+        self.team_seats: Set[int] = set(team_seats) if team_seats else set()
+        self.frozen_trainer: Optional['CFRTrainer'] = frozen_trainer
+        if frozen_trainer and not frozen_trainer.strategy_sum:
+            raise ValueError("Frozen trainer has no strategy data — empty or failed load.")
+
+        _VALID_OBJECTIVES = {"utilitarian", "maxmin", "smooth", "risk"}
+        if team_objective not in _VALID_OBJECTIVES:
+            raise ValueError(f"Unknown team_objective '{team_objective}'; valid: {_VALID_OBJECTIVES}")
+        self.team_objective: str = team_objective
 
         self.regret_sum: StrategyTable = {}
         self.strategy_sum: StrategyTable = {}
@@ -78,11 +93,32 @@ class CFRTrainer:
             return float(t)
         return 1.0
 
+    def _team_value(self, payoffs, traverser: int) -> float:
+        """Compute the scalar return for *traverser* at a terminal node."""
+        if not self.team_seats or traverser not in self.team_seats:
+            return payoffs[traverser]
+        team_payoffs = [payoffs[s] for s in self.team_seats]
+        obj = self.team_objective
+        if obj == "utilitarian":
+            return sum(team_payoffs)
+        if obj == "maxmin":
+            return min(team_payoffs)
+        if obj == "smooth":
+            return sum(team_payoffs) + SMOOTH_LAMBDA * min(team_payoffs)
+        if obj == "risk":
+            import math
+            return sum(math.log(RISK_OFFSET + u) for u in team_payoffs)
+        raise ValueError(f"Unknown team objective: {obj}")
+
     def get_strategy(self, info_key: InfoKey, legal_actions: List[int]) -> np.ndarray:
         """Return strategy distribution over legal_actions (length len(legal_actions))."""
         regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
-        if len(regrets_full) < NUM_ACTIONS:
-            regrets_full = np.pad(regrets_full, (0, NUM_ACTIONS - len(regrets_full)))
+        if len(regrets_full) != NUM_ACTIONS:
+            raise ValueError(
+                f"Regret array size mismatch for {info_key}: "
+                f"got {len(regrets_full)}, expected {NUM_ACTIONS}. "
+                f"Blueprint may be from an incompatible version."
+            )
         regrets_sub = np.array([regrets_full[a] for a in legal_actions])
         return regret_matching(regrets_sub, len(legal_actions))
 
@@ -93,8 +129,12 @@ class CFRTrainer:
         if info_key not in self.strategy_sum:
             return None
         s = self.strategy_sum[info_key]
-        if len(s) < NUM_ACTIONS:
-            s = np.pad(s, (0, NUM_ACTIONS - len(s)))
+        if len(s) != NUM_ACTIONS:
+            raise ValueError(
+                f"Strategy array size mismatch for {info_key}: "
+                f"got {len(s)}, expected {NUM_ACTIONS}. "
+                f"Blueprint may be from an incompatible version."
+            )
         if legal_actions is not None:
             s_sub = np.array([s[a] for a in legal_actions])
             return get_average_strategy(s_sub, len(legal_actions))
@@ -110,7 +150,7 @@ class CFRTrainer:
         if self.game.is_terminal(state):
             payoffs = self.game.get_payoffs(state)
             self.debugger.on_terminal(state, traverser, len(state.action_history), self.iteration, payoffs)
-            return payoffs[traverser]
+            return self._team_value(payoffs, traverser)
 
         if self.game.is_chance_node(state):
             self.debugger.on_chance_node(state, traverser, len(state.action_history), self.iteration)
@@ -131,6 +171,11 @@ class CFRTrainer:
             self.action_map[info_key] = list(actions)
 
         strategy = self.get_strategy(info_key, actions)
+
+        if self.frozen_trainer and player not in self.team_seats:
+            frozen_strat = self.frozen_trainer.get_average_strategy(info_key, actions)
+            if frozen_strat is not None:
+                strategy = frozen_strat
 
         if player == traverser:
             self.debugger.on_traverser_node(
@@ -228,7 +273,8 @@ class CFRTrainer:
             raise RuntimeError(f"CFR traversal depth exceeded: history={state.action_history}")
 
         if self.game.is_terminal(state):
-            return self.game.get_payoffs(state)[traverser]
+            payoffs = self.game.get_payoffs(state)
+            return self._team_value(payoffs, traverser)
 
         if self.game.is_chance_node(state):
             next_state = self.game.sample_chance(state)
@@ -249,6 +295,11 @@ class CFRTrainer:
             delta_am[info_key] = list(actions)
 
         strategy = self.get_strategy(info_key, actions)  # reads self.regret_sum — safe (read-only)
+
+        if self.frozen_trainer and player not in self.team_seats:
+            frozen_strat = self.frozen_trainer.get_average_strategy(info_key, actions)
+            if frozen_strat is not None:
+                strategy = frozen_strat
 
         if player == traverser:
             values = np.zeros(len(actions))
@@ -351,9 +402,14 @@ class CFRTrainer:
         assert not self.debugger.enabled, (
             "train_parallel is incompatible with debug mode. Use train() for debug traversals."
         )
-        if batch_size % self.num_players != 0:
+        traversers = list(range(self.num_players))
+        if self.team_seats:
+            traversers = [p for p in traversers if p in self.team_seats]
+        num_traversers = len(traversers)
+
+        if batch_size % num_traversers != 0:
             warnings.warn(
-                f"batch_size={batch_size} is not a multiple of num_players={self.num_players}. "
+                f"batch_size={batch_size} is not a multiple of active traversers={num_traversers}. "
                 "Traverser balance across the batch will be uneven.",
                 stacklevel=2,
             )
@@ -375,7 +431,7 @@ class CFRTrainer:
 
                 # Deal all hands on the main thread (uses global np.random, must stay serial)
                 jobs = [
-                    (self.game.deal_new_hand(), i % self.num_players, weight, rngs[i])
+                    (self.game.deal_new_hand(), traversers[i % num_traversers], weight, rngs[i])
                     for i in range(batch_size)
                 ]
 
@@ -416,9 +472,13 @@ class CFRTrainer:
         end = start + num_iterations
         print(f"Starting MCCFR for {num_iterations} iterations (total {start} -> {end})...")
 
+        traversers = list(range(self.num_players))
+        if self.team_seats:
+            traversers = [p for p in traversers if p in self.team_seats]
+
         for t in tqdm(range(start + 1, end + 1), "Training..."):
             self.iteration = t
-            for traverser in range(self.num_players):
+            for traverser in traversers:
                 self.debugger.begin_traversal(traverser, t)
                 state = self.game.deal_new_hand()
                 self.cfr_traverse(state, traverser)
@@ -465,14 +525,18 @@ class CFRTrainer:
     def save(self, path: str) -> None:
         import pickle
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        data = {
+            "regret_sum": self.regret_sum,
+            "strategy_sum": self.strategy_sum,
+            "action_map": self.action_map,
+            "iteration": self.iteration,
+            "linear_cfr_cutoff": self.linear_cfr_cutoff,
+        }
+        if self.team_seats:
+            data["team_seats"] = sorted(self.team_seats)
+            data["team_objective"] = self.team_objective
         with open(path, "wb") as f:
-            pickle.dump({
-                "regret_sum": self.regret_sum,
-                "strategy_sum": self.strategy_sum,
-                "action_map": self.action_map,
-                "iteration": self.iteration,
-                "linear_cfr_cutoff": self.linear_cfr_cutoff,
-            }, f)
+            pickle.dump(data, f)
         print(f"\nSaved to {path}")
 
     def load(self, path: str) -> None:
@@ -485,4 +549,8 @@ class CFRTrainer:
         self.iteration = data["iteration"]
         if "linear_cfr_cutoff" in data:
             self.linear_cfr_cutoff = data["linear_cfr_cutoff"]
+        if "team_seats" in data:
+            self.team_seats = set(data["team_seats"])
+        if "team_objective" in data:
+            self.team_objective = data["team_objective"]
         print(f"Loaded from {path} (iter {self.iteration})")
