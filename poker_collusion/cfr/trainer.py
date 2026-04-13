@@ -425,7 +425,8 @@ class CFRTrainer:
         rngs = [np.random.default_rng(seed=i) for i in range(batch_size)]
 
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            for t in tqdm(range(start + 1, end + 1), desc="Training (parallel)..."):
+            pbar = tqdm(range(start + 1, end + 1), desc="Training (parallel)...")
+            for t in pbar:
                 self.iteration = t
                 weight = self._iteration_weight(t)
 
@@ -445,7 +446,7 @@ class CFRTrainer:
 
                 if log_interval and t % log_interval == 0:
                     avg_regret = self._compute_avg_regret()
-                    print(
+                    tqdm.write(
                         f"  Iter {t}/{end} | "
                         f"Info sets: {len(self.regret_sum)} | "
                         f"Avg regret: {avg_regret:.7f}"
@@ -476,7 +477,8 @@ class CFRTrainer:
         if self.team_seats:
             traversers = [p for p in traversers if p in self.team_seats]
 
-        for t in tqdm(range(start + 1, end + 1), "Training..."):
+        pbar = tqdm(range(start + 1, end + 1), "Training...")
+        for t in pbar:
             self.iteration = t
             for traverser in traversers:
                 self.debugger.begin_traversal(traverser, t)
@@ -486,7 +488,7 @@ class CFRTrainer:
 
             if log_interval and t % log_interval == 0:
                 avg_regret = self._compute_avg_regret()
-                print(
+                tqdm.write(
                     f"  Iter {t}/{end} | "
                     f"Info sets: {len(self.regret_sum)} | "
                     f"Avg regret: {avg_regret:.7f}"

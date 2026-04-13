@@ -89,6 +89,15 @@ python3t scripts/train.py --log-interval 1 --out output/blueprint_v4.pkl \
     --team-objective utilitarian
 # --team-objective choices: utilitarian (default), maxmin, smooth, risk
 
+# 6. Evaluate team strategy vs frozen opponent
+python scripts/evaluate.py --team-eval \
+    --team-strategy output/blueprint_v4.pkl \
+    --frozen-strategy output/blueprint_claude_v3_32100.pkl \
+    --hands 10000
+
+# 7. Run D1 correctness checks (frozen immutability, terminal values, traverser skip)
+python scripts/validate_team.py --frozen-strategy output/blueprint_claude_v3_32100.pkl
+
 ```
 
 ## Game Parameters (from formulation)

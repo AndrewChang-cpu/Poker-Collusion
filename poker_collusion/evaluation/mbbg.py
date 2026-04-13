@@ -152,6 +152,25 @@ def evaluate_strategies(
     return mbb_mean, mbb_se
 
 
+def summarize_team(
+    mbb_mean: np.ndarray,
+    mbb_se: np.ndarray,
+    team_seats: List[int],
+    seat_labels: Tuple[str, ...] = ("BTN", "SB", "BB"),
+) -> None:
+    """Print team aggregate and solo opponent mbb/g from per-seat arrays."""
+    frozen_seats = [s for s in range(len(mbb_mean)) if s not in team_seats]
+
+    team_mbb = sum(mbb_mean[s] for s in team_seats)
+    team_se = (sum(mbb_se[s] ** 2 for s in team_seats)) ** 0.5
+    team_labels = "+".join(seat_labels[s] for s in team_seats)
+
+    print(f"\n{'— Team summary —':^60}")
+    print(f"  Team ({team_labels}):  mbb/g = {team_mbb:.1f} ± {team_se:.1f}")
+    for s in frozen_seats:
+        print(f"  Solo ({seat_labels[s]}):       mbb/g = {mbb_mean[s]:.1f} ± {mbb_se[s]:.1f}")
+
+
 def evaluate_with_variance(
     game: CFRGame,
     trainer: _SupportsAverageStrategy,

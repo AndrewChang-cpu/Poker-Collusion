@@ -34,6 +34,7 @@ from poker_collusion.evaluation import (
     evaluate_with_variance,
     evaluate_vs_amateur,
     evaluate_vs_amateur_rotate,
+    summarize_team,
 )
 from poker_collusion.config import EVAL_HANDS_DEFAULT, EVAL_BLOCK_SIZE, NUM_PLAYERS
 
@@ -78,9 +79,58 @@ def main() -> None:
                     help="Seat for CFR when using --vs-amateur (0=BTN, 1=SB, 2=BB)")
     ap.add_argument("--rotate", action="store_true",
                     help="With --vs-amateur: run CFR in all three seats and report average")
+    ap.add_argument("--team-eval", action="store_true",
+                    help="Evaluate a team checkpoint vs a frozen opponent checkpoint")
+    ap.add_argument("--team-strategy", type=str, default=None, metavar="PATH",
+                    help="Path to team-trained .pkl (required with --team-eval)")
+    ap.add_argument("--frozen-strategy", type=str, default=None, metavar="PATH",
+                    help="Path to frozen opponent .pkl (required with --team-eval)")
     args = ap.parse_args()
 
     game = GameModule()
+
+    # ── Team evaluation mode ──────────────────────────────────────────────────
+    if args.team_eval:
+        if not args.team_strategy:
+            print("Error: --team-strategy is required with --team-eval.")
+            sys.exit(1)
+        if not args.frozen_strategy:
+            print("Error: --frozen-strategy is required with --team-eval.")
+            sys.exit(1)
+
+        team_trainer = _load_trainer(game, args.team_strategy)
+        frozen_trainer = _load_trainer(game, args.frozen_strategy)
+
+        team_seats = sorted(team_trainer.team_seats)
+        if not team_seats:
+            print("Error: team strategy has no team_seats metadata. Was it trained with --team-seats?")
+            sys.exit(1)
+        frozen_seats = [s for s in range(NUM_PLAYERS) if s not in team_seats]
+
+        seat_labels = ["BTN", "SB", "BB"]
+        policies = [None] * NUM_PLAYERS
+        names = [None] * NUM_PLAYERS
+        for s in team_seats:
+            policies[s] = team_trainer
+            names[s] = f"Team ({seat_labels[s]})"
+        for s in frozen_seats:
+            policies[s] = frozen_trainer
+            names[s] = f"Frozen ({seat_labels[s]})"
+
+        obj = getattr(team_trainer, "team_objective", "utilitarian")
+        print("=" * 60)
+        print(f"Team Evaluation: seats {team_seats} vs frozen {frozen_seats} (objective={obj})")
+        print("=" * 60)
+
+        mbb_mean, mbb_se = evaluate_strategies(
+            game,
+            policies=policies,
+            names=names,
+            num_hands=args.hands,
+            block_size=args.block_size,
+        )
+        summarize_team(mbb_mean, mbb_se, team_seats)
+        return
 
     # ── Per-player strategies mode ────────────────────────────────────────────
     if args.strategies is not None:
