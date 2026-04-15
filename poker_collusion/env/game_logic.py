@@ -51,8 +51,8 @@ def sample_chance(state):
     s.last_raiser = -1
     s.last_raise_amount = 0.0
 
-    # Past river or board full -> resolve immediately
-    if s.round_idx > 3 or len(s.board) >= 5:
+    # Past river (all-in runout incremented beyond round 3) -> resolve immediately
+    if s.round_idx > 3:
         _resolve_hand(s)
         return s
 
