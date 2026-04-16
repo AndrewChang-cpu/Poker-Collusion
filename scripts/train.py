@@ -47,15 +47,15 @@ from poker_collusion.config import (
 
 # Game module interface for CFR (env is the module)
 class GameModule:
-    deal_new_hand = staticmethod(deal_new_hand)
+    deal_new_hand      = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
-    get_legal_actions = staticmethod(get_legal_actions)
-    get_info_key = staticmethod(get_info_key)
-    is_terminal = staticmethod(is_terminal)
-    get_payoffs = staticmethod(get_payoffs)
-    apply_action = staticmethod(apply_action)
-    is_chance_node = staticmethod(is_chance_node)
-    sample_chance = staticmethod(sample_chance)
+    get_legal_actions  = staticmethod(get_legal_actions)
+    get_info_key       = staticmethod(get_info_key)
+    is_terminal        = staticmethod(is_terminal)
+    get_payoffs        = staticmethod(get_payoffs)
+    apply_action       = staticmethod(apply_action)
+    is_chance_node     = staticmethod(is_chance_node)
+    sample_chance      = staticmethod(sample_chance)
 
 
 def main() -> None:

@@ -14,16 +14,19 @@ _DEAL = "DEAL"
 
 def get_info_key(state, player):
     """
-    Return hashable info set key: (round_idx, bucket, actor_action_pairs).
+    Return hashable info set key: (round_idx, bucket, history).
 
     On preflop (round_idx == 0) the bucket component is the canonical hand ID
     in [0, 168] — full resolution, no bucketing.  On postflop streets the bucket
     comes from the equity-based abstraction tables.
 
-    The history component contains (actor, action) pairs for the current street
-    only (since the last DEAL sentinel). Including the actor disambiguates
-    game states where different players have folded on prior streets — without
-    this, two different active-player configurations can produce identical keys.
+    The history component contains all (actor, action) pairs from every street,
+    with 'DEAL' sentinels marking street boundaries. This enables multi-street
+    collusion strategies (e.g. conditioning river play on a teammate's flop
+    aggression).
+
+    Old strategies trained without full history are handled transparently via
+    key translation in CFRTrainer.get_average_strategy().
     """
     hole = tuple(state.hole_cards[player])
     round_idx = state.round_idx
@@ -34,16 +37,17 @@ def get_info_key(state, player):
         board = tuple(state.board)
         bucket = int(get_bucket(hole, board, round_idx))
 
-    # Find the start of the current street: the position after the last DEAL.
-    last_deal = -1
-    for i, a in enumerate(state.action_history):
+    # All streets: (actor, action) pairs with DEAL markers as street separators.
+    history = []
+    actor_idx = 0
+    for a in state.action_history:
         if a == _DEAL:
-            last_deal = i
-    street_actions = state.action_history[last_deal + 1:]
-
-    # actor_history has no DEAL entries — offset by count of non-DEAL actions
-    # before the current street to get the matching slice.
-    num_prior_actions = sum(1 for a in state.action_history[:last_deal + 1] if a != _DEAL)
-    street_actors = state.actor_history[num_prior_actions:]
-
-    return (round_idx, bucket, tuple(zip(street_actors, street_actions)))
+            history.append(_DEAL)
+        else:
+            history.append((state.actor_history[actor_idx], a))
+            actor_idx += 1
+    assert actor_idx == len(state.actor_history), (
+        f"actor_history length {len(state.actor_history)} does not match "
+        f"non-DEAL action count {actor_idx}. State history is inconsistent."
+    )
+    return (round_idx, bucket, tuple(history))

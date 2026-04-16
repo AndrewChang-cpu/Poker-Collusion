@@ -40,15 +40,15 @@ from poker_collusion.config import EVAL_HANDS_DEFAULT, EVAL_BLOCK_SIZE, NUM_PLAY
 
 
 class GameModule:
-    deal_new_hand = staticmethod(deal_new_hand)
+    deal_new_hand      = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
-    get_legal_actions = staticmethod(get_legal_actions)
-    get_info_key = staticmethod(get_info_key)
-    is_terminal = staticmethod(is_terminal)
-    get_payoffs = staticmethod(get_payoffs)
-    apply_action = staticmethod(apply_action)
-    is_chance_node = staticmethod(is_chance_node)
-    sample_chance = staticmethod(sample_chance)
+    get_legal_actions  = staticmethod(get_legal_actions)
+    get_info_key       = staticmethod(get_info_key)
+    is_terminal        = staticmethod(is_terminal)
+    get_payoffs        = staticmethod(get_payoffs)
+    apply_action       = staticmethod(apply_action)
+    is_chance_node     = staticmethod(is_chance_node)
+    sample_chance      = staticmethod(sample_chance)
 
 
 def _load_trainer(game: GameModule, path: str) -> CFRTrainer:
@@ -100,6 +100,12 @@ def main() -> None:
 
         team_trainer = _load_trainer(game, args.team_strategy)
         frozen_trainer = _load_trainer(game, args.frozen_strategy)
+
+        if not getattr(frozen_trainer, 'full_history', False):
+            print(
+                f"Note: frozen strategy uses street-only history (full_history=False). "
+                "Postflop lookups will be auto-translated to the full-history key format."
+            )
 
         team_seats = sorted(team_trainer.team_seats)
         if not team_seats:

@@ -35,6 +35,23 @@ InfoKey = Any
 StrategyTable = Dict[InfoKey, np.ndarray]
 ActionMap = Dict[InfoKey, List[int]]
 
+_DEAL_SENTINEL = "DEAL"
+
+
+def _to_street_only_key(key: Any) -> Any:
+    """Reduce a full-history infoset key to its current-street-only equivalent.
+
+    Used for backwards-compatible lookup in old-format (pre-full-history) trainers.
+    On preflop there are no DEAL sentinels so the key is returned unchanged.
+    """
+    if not (isinstance(key, tuple) and len(key) == 3):
+        return key
+    round_idx, bucket, history = key
+    if _DEAL_SENTINEL not in history:
+        return key  # Preflop or no prior streets — formats are identical
+    last_deal = max(i for i, e in enumerate(history) if e == _DEAL_SENTINEL)
+    return (round_idx, bucket, history[last_deal + 1:])
+
 
 class CFRTrainer:
     def __init__(
@@ -66,6 +83,7 @@ class CFRTrainer:
             consolidate=debug_consolidate,
         )
 
+        self.full_history: bool = True  # always enabled; old pkls translate on lookup
         self.team_seats: Set[int] = set(team_seats) if team_seats else set()
         self.frozen_trainer: Optional['CFRTrainer'] = frozen_trainer
         if frozen_trainer and not frozen_trainer.strategy_sum:
@@ -125,7 +143,14 @@ class CFRTrainer:
     def get_average_strategy(
         self, info_key: InfoKey, legal_actions: Optional[List[int]] = None
     ) -> Optional[np.ndarray]:
-        """If legal_actions given, return normalized dist over those; else full length-NUM_ACTIONS."""
+        """If legal_actions given, return normalized dist over those; else full length-NUM_ACTIONS.
+
+        If this trainer was loaded from an old-format (street-only) pkl, the incoming
+        full-history key is automatically translated to the street-only equivalent before
+        lookup so that old strategies remain usable as frozen opponents.
+        """
+        if not self.full_history:
+            info_key = _to_street_only_key(info_key)
         if info_key not in self.strategy_sum:
             return None
         s = self.strategy_sum[info_key]
@@ -379,6 +404,17 @@ class CFRTrainer:
                 if key not in self.action_map:
                     self.action_map[key] = actions
 
+    def _assert_full_history_for_training(self) -> None:
+        """Raise immediately if this trainer was loaded from an old-format checkpoint."""
+        if not self.full_history:
+            raise RuntimeError(
+                "Cannot train from a street-only checkpoint (full_history=False).\n"
+                "The loaded strategy uses street-only infoset keys which are incompatible\n"
+                "with the current full-history training format. Starting training on top\n"
+                "of old keys would silently discard all prior regret data.\n"
+                "Fix: omit --load to start fresh, or retrain the checkpoint with full history."
+            )
+
     def train_parallel(
         self,
         num_iterations: int,
@@ -399,6 +435,7 @@ class CFRTrainer:
         Incompatible with debug mode.
         batch_size should be a multiple of num_players (3).
         """
+        self._assert_full_history_for_training()
         assert not self.debugger.enabled, (
             "train_parallel is incompatible with debug mode. Use train() for debug traversals."
         )
@@ -469,6 +506,7 @@ class CFRTrainer:
         Run num_iterations of MCCFR. If checkpoint_interval > 0 and checkpoint_path is set,
         save every checkpoint_interval iterations ({iter} in path is replaced with the number).
         """
+        self._assert_full_history_for_training()
         start = self.iteration
         end = start + num_iterations
         print(f"Starting MCCFR for {num_iterations} iterations (total {start} -> {end})...")
@@ -534,6 +572,7 @@ class CFRTrainer:
             "iteration": self.iteration,
             "linear_cfr_cutoff": self.linear_cfr_cutoff,
         }
+        data["full_history"] = self.full_history
         if self.team_seats:
             data["team_seats"] = sorted(self.team_seats)
             data["team_objective"] = self.team_objective
@@ -551,6 +590,18 @@ class CFRTrainer:
         self.iteration = data["iteration"]
         if "linear_cfr_cutoff" in data:
             self.linear_cfr_cutoff = data["linear_cfr_cutoff"]
+        saved_fh = data.get("full_history", False)
+        if not saved_fh:
+            print(
+                "Warning: loaded strategy was trained with street-only history "
+                "(full_history=False).\n"
+                "  Postflop strategy lookups will be automatically translated to the "
+                "full-history key format.\n"
+                "  This strategy cannot be used as a training checkpoint — "
+                "call train() or train_parallel() will raise an error.\n"
+                "  For best results, retrain the strategy with full history enabled."
+            )
+        self.full_history = saved_fh
         if "team_seats" in data:
             self.team_seats = set(data["team_seats"])
         if "team_objective" in data:
