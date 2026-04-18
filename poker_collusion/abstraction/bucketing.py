@@ -4,6 +4,7 @@ Loads precomputed tables from data/ when available; fallback to 0.
 """
 
 import os
+import numpy as np # Use numpy for cross-process determinism
 from poker_collusion.config import (
     PREFLOP_BUCKETS,
     FLOP_BUCKETS,
@@ -56,9 +57,6 @@ def _load_tables():
 def get_bucket(hole_cards, board, round_idx):
     """
     Return bucket id in [0, n_buckets-1] for (hole_cards, board) at given round.
-    hole_cards: tuple of 2 ints (card indices 0-51).
-    board: tuple of 0, 3, 4, or 5 ints.
-    round_idx: 0=preflop, 1=flop, 2=turn, 3=river.
     """
     _load_tables()
     if round_idx == 0:
@@ -82,7 +80,7 @@ def get_bucket(hole_cards, board, round_idx):
 
 
 def _hole_to_canonical(hole_cards):
-    """Map 2 cards to 169 canonical hand id (0..168). Matches bucketing_build.preflop_table."""
+    """Map 2 cards to 169 canonical hand id (0..168)."""
     r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
     s0, s1 = hole_cards[0] // 13, hole_cards[1] // 13
     high, low = max(r0, r1), min(r0, r1)
@@ -106,7 +104,7 @@ def _preflop_fallback(hole_cards, num_buckets=PREFLOP_BUCKETS):
 
 
 def _postflop_fallback(hole_cards, board, num_buckets):
-    """Fallback: use hand category. Requires hand_eval."""
+    """Fallback: use hand category."""
     from poker_collusion.env.hand_eval import evaluate_hand
     cards = list(hole_cards) + list(board)
     if len(cards) < 5:
@@ -132,15 +130,14 @@ def _equity_to_bucket(hole_cards, board, board_len, centers, num_buckets):
 
 
 def _estimate_equity(hole_cards, board, board_len, n_rollouts=100):
-    """Monte Carlo equity estimate vs random opponent (0..1)."""
-    import random
+    """Monte Carlo equity estimate using numpy for process-safe determinism."""
     from poker_collusion.env.hand_eval import evaluate_hand
     used = set(hole_cards) | set(board[:board_len])
-    deck = [c for c in range(52) if c not in used]
+    deck = np.array([c for c in range(52) if c not in used])
     wins = 0
     for _ in range(n_rollouts):
-        rest = list(deck)
-        random.shuffle(rest)
+        indices = np.random.permutation(len(deck))
+        rest = deck[indices]
         opp = tuple(rest[:2])
         if board_len == 3:
             runout = rest[2:7]

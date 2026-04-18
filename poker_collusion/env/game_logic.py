@@ -2,7 +2,7 @@
 Game logic: legal actions, apply_action, undo_action, chance nodes, round advancement.
 """
 
-# Set by apply_action so undo_action() can undo without explicit state (CFR interface).
+# Set by apply_action and sample_chance so undo_action() can undo without explicit state.
 _current_state = None
 
 from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB
@@ -33,6 +33,9 @@ def is_chance_node(state):
 
 def sample_chance(state):
     """Deal next street (flop/turn/river), append DEAL to history, advance round."""
+    global _current_state
+    _current_state = state
+    
     if not state.chance_pending or state.done:
         return state
     n = 3 if state.round_idx == 0 else 1
@@ -42,15 +45,17 @@ def sample_chance(state):
     state.action_history.append(DEAL)
     state.round_idx += 1
     state.chance_pending = False
-    state.undo_stack.append(("DEAL", n, list(state.bets), state.last_raiser, state.last_raise_amount)) # TODO: BUGGY
+    
+    # Snapshot for DEAL with stacks and pot for perfect reversion
+    state.undo_stack.append(("DEAL", n, list(state.bets), state.last_raiser, 
+                             state.last_raise_amount, list(state.stacks), state.pot))
+    
     state.bets = [0.0] * NUM_PLAYERS
     state.last_raiser = -1
     state.last_raise_amount = 0.0
-    # Past river or board already full -> resolve; no further decision nodes
     if state.round_idx > 3 or len(state.board) >= 5:
         _resolve_hand(state)
         return state
-    # First to act postflop: P1, then P2, then P0
     for offset in range(1, NUM_PLAYERS + 1):
         p = (offset) % NUM_PLAYERS
         if state.active[p] and not state.all_in[p]:
@@ -93,7 +98,6 @@ def apply_action(state, action_index):
         if state.stacks[p] <= 0:
             state.all_in[p] = True
 
-    # Single winner?
     active_count = sum(state.active)
     if active_count == 1:
         _resolve_hand(state)
@@ -104,15 +108,26 @@ def apply_action(state, action_index):
 
 
 def undo_action(state=None):
-    """Undo last apply_action or sample_chance. If state is None, use module-level _current_state."""
+    """Undo last apply_action or sample_chance with run-out support."""
     global _current_state
     if state is None:
         state = _current_state
     if state is None or not state.undo_stack:
         return
+        
     top = state.undo_stack.pop()
+    
+    if isinstance(top, tuple) and top[0] == "RUNOUT":
+        _, added_cards, added_rounds = top
+        state.deck_idx -= added_cards
+        for _ in range(added_cards):
+            state.board.pop()
+        state.round_idx -= added_rounds
+        state.done = False
+        return undo_action(state)
+        
     if isinstance(top, tuple) and top[0] == "DEAL":
-        _, n = top[0], top[1]
+        _, n, prev_bets, prev_raiser, prev_raise_amt, prev_stacks, prev_pot = top
         state.action_history.pop()
         state.round_idx -= 1
         state.deck_idx -= n
@@ -121,12 +136,13 @@ def undo_action(state=None):
         state.chance_pending = True
         state.done = False
         state.current_player = -1
-        if len(top) >= 5:
-            state.bets = list(top[2])
-            state.last_raiser = top[3]
-            state.last_raise_amount = top[4]
+        state.bets = list(prev_bets)
+        state.last_raiser = prev_raiser
+        state.last_raise_amount = prev_raise_amt
+        state.stacks = list(prev_stacks)
+        state.pot = prev_pot
         return
-    # Undo action
+        
     state.action_history.pop()
     state.stacks = top["stacks"]
     state.pot = top["pot"]
@@ -151,7 +167,6 @@ def _advance_to_next_player(state):
         state.chance_pending = True
         state.current_player = -1
         return
-    # Next player
     next_p = (state.current_player + 1) % NUM_PLAYERS
     while not state.active[next_p] or state.all_in[next_p]:
         next_p = (next_p + 1) % NUM_PLAYERS
@@ -159,7 +174,7 @@ def _advance_to_next_player(state):
 
 
 def _who_acted_this_round(state):
-    """Return set of player indices who have acted in the current street (since last DEAL)."""
+    """Correctly identify actors by checking snapshots in history."""
     hist = state.action_history
     start = 0
     for i in range(len(hist) - 1, -1, -1):
@@ -167,16 +182,14 @@ def _who_acted_this_round(state):
             start = i + 1
             break
     round_actions = hist[start:]
-    is_preflop = state.round_idx == 0
-    order = [0, 1, 2] if is_preflop else [1, 2, 0]
+    num_round_actions = len(round_actions)
+    if num_round_actions == 0:
+        return set()
     acted = set()
-    idx = 0
-    for a in round_actions:
-        if a == DEAL:
-            break
-        player = order[idx % len(order)]
-        acted.add(player)
-        idx += 1
+    snapshots = state.undo_stack[-num_round_actions:]
+    for s in snapshots:
+        if isinstance(s, dict):
+            acted.add(s["current_player"])
     return acted
 
 
@@ -230,17 +243,25 @@ def _is_round_complete(state):
 
 
 def _run_out_board_and_resolve(state):
+    """Run out community cards and resolve with undo tracking."""
+    added_cards = 0
+    added_rounds = 0
     while len(state.board) < 5:
         n = 3 if state.round_idx == 0 else 1
+        if state.deck_idx + n > len(state.deck):
+            break
         for _ in range(n):
             state.board.append(state.deck[state.deck_idx])
             state.deck_idx += 1
+            added_cards += 1
         state.round_idx += 1
+        added_rounds += 1
+    if added_cards > 0 or added_rounds > 0:
+        state.undo_stack.append(("RUNOUT", added_cards, added_rounds))
     _resolve_hand(state)
 
 
 def _resolve_hand(state):
-    """Resolve hand: fold winner or showdown with side pots."""
     state.done = True
     active = [p for p in range(NUM_PLAYERS) if state.active[p]]
     if len(active) == 1:
@@ -251,9 +272,7 @@ def _resolve_hand(state):
 
 
 def _resolve_side_pots(state, active_players, contributions):
-    """Distribute state.pot among active players using side pot rules."""
-    # Pot slice at level L: (L - prev) * (number of players with contribution >= L)
-    # Winner of that slice: best hand among *active* players with contribution >= L
+    """Distribute pot supporting split pots."""
     levels = sorted(set(contributions[p] for p in range(NUM_PLAYERS) if contributions[p] > 0))
     prev = 0
     for level in levels:
@@ -267,11 +286,15 @@ def _resolve_side_pots(state, active_players, contributions):
             prev = level
             continue
         best_hand = None
-        winner = None
+        winners = []
         for p in eligible_win:
             h = evaluate_hand(state.hole_cards[p] + state.board)
             if best_hand is None or h > best_hand:
                 best_hand = h
-                winner = p
-        state.stacks[winner] += slice_size
+                winners = [p]
+            elif h == best_hand:
+                winners.append(p)
+        share = slice_size / len(winners)
+        for w in winners:
+            state.stacks[w] += share
         prev = level

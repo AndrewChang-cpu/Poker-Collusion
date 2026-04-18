@@ -1,5 +1,5 @@
 """
-Info set key: (card_bucket, action_history) with action indices and DEAL.
+Info set key generation with canonicalization.
 """
 
 from poker_collusion.abstraction.bucketing import get_bucket
@@ -8,9 +8,10 @@ from poker_collusion.abstraction.bucketing import get_bucket
 def get_info_key(state, player):
     """
     Return hashable info set key: (bucket, tuple(action_history)).
-    state must have: hole_cards, board, round_idx, action_history.
+    Canonicalizes hole cards by sorting.
     """
-    hole = tuple(state.hole_cards[player])
+    # Canonicalize: (A, K) and (K, A) result in identical info sets
+    hole = tuple(sorted(state.hole_cards[player]))
     board = tuple(state.board)
     round_idx = state.round_idx
     bucket = get_bucket(hole, board, round_idx)

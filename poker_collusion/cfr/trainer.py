@@ -1,17 +1,14 @@
 """
 MCCFR trainer: external sampling, Linear CFR, regret pruning.
-Game module must provide: deal_new_hand, get_current_player, get_legal_actions,
-get_info_key, is_terminal, get_payoffs, apply_action, undo_action, is_chance_node, sample_chance.
-"""
-"""
-MCCFR trainer: external sampling, Linear CFR, regret pruning.
+Supports safe multiprocessing logging and relative path resolution.
+Optimized traversal loop for high-throughput parallel training.
 """
 
 import sys
+import os
 import traceback
 import json
 import numpy as np
-import os
 from tqdm import tqdm
 from poker_collusion.cfr.strategy import regret_matching, get_average_strategy
 from poker_collusion.config import (
@@ -21,18 +18,39 @@ from poker_collusion.config import (
     PRUNE_SKIP_PROBABILITY,
 )
 
-
-# Debug: full traceback and NDJSON logs (used by train() and cfr_traverse)
-_CFR_ERROR_LOG = "logs/cfr_error_traceback.log"
-_DEBUG_LOG = "logs/debug.log"
+# Portable paths
+_BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_CFR_ERROR_LOG = os.path.join(_BASE, "logs", "cfr_error_traceback.log")
+_DEBUG_LOG = os.path.join(_BASE, "logs", "debug.log")
 
 
 def write_to_debug(entry):
-    try:
-        with open(_DEBUG_LOG, "a") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
+    """Multiprocess-safe logging with jittered backoff retry."""
+    import time
+    import random
+    os.makedirs(os.path.dirname(_DEBUG_LOG), exist_ok=True)
+    entry_str = json.dumps(entry)
+    for _ in range(5):
+        try:
+            with open(_DEBUG_LOG, "a") as f:
+                f.write(entry_str + "\n")
+            return
+        except (IOError, PermissionError):
+            time.sleep(random.random() * 0.05)
+
+def _log_error(message, traceback_str):
+    """Safety helper for logging errors."""
+    import time
+    import random
+    os.makedirs(os.path.dirname(_CFR_ERROR_LOG), exist_ok=True)
+    for _ in range(5):
+        try:
+            with open(_CFR_ERROR_LOG, "a") as f:
+                f.write(f"\n{message}\n{traceback_str}\n")
+            return
+        except (IOError, PermissionError):
+            time.sleep(random.random() * 0.05)
+
 
 class CFRTrainer:
     def __init__(
@@ -57,7 +75,7 @@ class CFRTrainer:
         self.iteration = 0
 
     def get_strategy(self, info_key, legal_actions):
-        """Return strategy distribution over legal_actions (length len(legal_actions))."""
+        """Return strategy distribution over legal_actions."""
         regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
         if len(regrets_full) < NUM_ACTIONS:
             regrets_full = np.resize(regrets_full, NUM_ACTIONS)
@@ -65,7 +83,7 @@ class CFRTrainer:
         return regret_matching(regrets_sub, len(legal_actions))
 
     def get_average_strategy(self, info_key, legal_actions=None):
-        """If legal_actions given, return normalized dist over those (len(legal_actions)); else full length-NUM_ACTIONS."""
+        """Return normalized distribution over legal actions."""
         if info_key not in self.strategy_sum:
             return None
         s = self.strategy_sum[info_key]
@@ -77,6 +95,7 @@ class CFRTrainer:
         return get_average_strategy(s, NUM_ACTIONS)
 
     def cfr_traverse(self, state, traverser, depth=0, depth_limit=500):
+        """Clean recursive traversal for performance."""
         if depth > depth_limit:
             return 0.0
     
@@ -133,6 +152,7 @@ class CFRTrainer:
             return val
 
     def _should_prune(self, info_key, action):
+        """Unified pruning warm-up check using global training timeline."""
         if self.prune_threshold is None or self.iteration <= self.prune_warm_up:
             return False
         regrets = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
@@ -155,7 +175,6 @@ class CFRTrainer:
                     state = self.game.deal_new_hand()
                     self.cfr_traverse(state, traverser)
 
-                #if True:
                 if log_interval and t % log_interval == 0 and show_progress:
                     avg_regret = self._compute_avg_regret()
                     print(f"  Iter {t}/{end} | Info sets: {len(self.regret_sum)} | Avg regret: {avg_regret:.7f}")
@@ -164,16 +183,13 @@ class CFRTrainer:
                         path = checkpoint_path.format(iter=t) if "{iter}" in checkpoint_path else checkpoint_path
                         self.save(path)
         except Exception:
-            with open(_CFR_ERROR_LOG, "a") as f:
-                f.write(f"\nException at iteration {self.iteration}\n")
-                f.write(traceback.format_exc())
+            _log_error(f"Exception at iteration {self.iteration}", traceback.format_exc())
             raise
 
     def merge(self, other):
         """Sum regrets and strategies from another trainer instance."""
         for key, val in other.regret_sum.items():
             if key in self.regret_sum:
-                # Resize if necessary to maintain consistency
                 if len(self.regret_sum[key]) < len(val):
                     self.regret_sum[key] = np.resize(self.regret_sum[key], len(val))
                 self.regret_sum[key] += val[:len(self.regret_sum[key])]

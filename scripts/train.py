@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Run MCCFR training and save blueprint strategy.
-Supports parallelization via --processes with a smooth tqdm progress bar.
+Supports synchronized parallelization for accurate Linear CFR weighting.
 """
 
 import os
@@ -56,8 +56,8 @@ class GameModule:
 
 
 def _parallel_train_worker(args):
-    """Independent worker running a chunk of iterations."""
-    num_iterations, load_path, seed = args
+    """Independent worker running a chunk of iterations on the global timeline."""
+    num_iterations, load_path, seed, start_iteration = args
     np.random.seed(seed)
     
     game = GameModule()
@@ -73,18 +73,21 @@ def _parallel_train_worker(args):
     if load_path:
         trainer.load(load_path)
 
-    # Run the assigned iterations for this chunk
+    # Sync to global iteration count for weights and pruning
+    trainer.iteration = start_iteration
+
     trainer.train(num_iterations=num_iterations, log_interval=0, show_progress=False)
     
     return {
         "regret_sum": trainer.regret_sum,
         "strategy_sum": trainer.strategy_sum,
         "action_map": trainer.action_map,
-        "iteration": num_iterations # Return how many it contributed
+        "iteration": num_iterations
     }
 
 
 def main():
+    """Main orchestrator with streaming merger and global timeline sync."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--iterations", "-n", type=int, default=T_MAX_DEFAULT)
     ap.add_argument("--log-interval", type=int, default=LOG_INTERVAL)
@@ -106,7 +109,6 @@ def main():
         prune_skip_prob=PRUNE_SKIP_PROBABILITY,
     )
 
-    # Prepare initial baseline if loading
     baseline_iter = 0
     if args.load:
         load_full_path = os.path.join(ROOT, args.load)
@@ -121,40 +123,37 @@ def main():
     start_time = time.time()
 
     if args.processes > 1:
-        # Divide total iterations into chunks to show progress
-        # 100 chunks provides a smooth bar without too much communication overhead
         num_chunks = max(args.processes, 100)
         iters_per_chunk = args.iterations // num_chunks
         
         worker_tasks = []
+        # Assign unique iteration ranges to each chunk
+        current_global_iter = baseline_iter
         for i in range(num_chunks):
-            # The last chunk gets any remainder
             n = iters_per_chunk if i < num_chunks - 1 else args.iterations - (iters_per_chunk * (num_chunks - 1))
             seed = int(time.time() * 1000) % 2**32 + i
-            worker_tasks.append((n, args.load, seed))
+            worker_tasks.append((n, args.load, seed, current_global_iter))
+            current_global_iter += n
             
-        all_results = []
-        with multiprocessing.Pool(processes=args.processes) as pool:
-            # imap_unordered allows the tqdm bar to update as soon as ANY chunk finishes
-            pbar = tqdm(total=args.iterations, desc="Parallel Training", unit="iter")
-            for result in pool.imap_unordered(_parallel_train_worker, worker_tasks):
-                all_results.append(result)
-                pbar.update(result["iteration"])
-            pbar.close()
-            
-        print("\nMerging and Averaging results...")
-        # Reset main trainer sums to aggregate worker data
         main_trainer.regret_sum = {}
         main_trainer.strategy_sum = {}
         
-        for res in all_results:
-            temp = CFRTrainer(game)
-            temp.regret_sum = res["regret_sum"]
-            temp.strategy_sum = res["strategy_sum"]
-            temp.action_map = res["action_map"]
-            main_trainer.merge(temp)
+        with multiprocessing.Pool(processes=args.processes) as pool:
+            pbar = tqdm(total=args.iterations, desc="Parallel Training", unit="iter")
+            for result in pool.imap_unordered(_parallel_train_worker, worker_tasks):
+                temp = CFRTrainer(game)
+                temp.regret_sum = result["regret_sum"]
+                temp.strategy_sum = result["strategy_sum"]
+                temp.action_map = result["action_map"]
+                main_trainer.merge(temp)
+                
+                pbar.update(result["iteration"])
+                del result
+                del temp
+                
+            pbar.close()
             
-        # Divide by num_chunks to get the average across all independent samples
+        print("\nAveraging results across chunks...")
         for key in main_trainer.regret_sum:
             main_trainer.regret_sum[key] /= num_chunks
         for key in main_trainer.strategy_sum:
@@ -162,7 +161,6 @@ def main():
             
         main_trainer.iteration = baseline_iter + args.iterations
     else:
-        # Standard sequential training
         main_trainer.train(
             num_iterations=args.iterations,
             log_interval=args.log_interval,
