@@ -2,7 +2,7 @@
 Game logic for Leduc: 2 streets, 1 board card.
 """
 
-from poker_collusion.config import NUM_PLAYERS, POSTFLOP_ORDER
+from poker_collusion.config import NUM_PLAYERS, POSTFLOP_ORDER, STARTING_STACK_BB
 from poker_collusion.env.game_state import NLHEState, DEAL
 from poker_collusion.env.hand_eval import evaluate_hand
 from poker_collusion.abstraction.actions import get_legal_action_indices, action_index_to_chips
@@ -17,7 +17,6 @@ def is_terminal(state): return state.done
 def is_chance_node(state): return state.chance_pending and not state.done
 
 def sample_chance(state):
-    """Deal the single community card for the Flop."""
     assert state.chance_pending and not state.done
     s = state.copy()
     s.board.append(s.deck[s.deck_idx])
@@ -29,7 +28,6 @@ def sample_chance(state):
     s.last_raiser = -1
     s.last_raise_amount = 0.0
 
-    # Leduc ends after round 1 (Flop) betting. If we somehow advance beyond:
     if s.round_idx > 1:
         _resolve_hand(s)
         return s
@@ -76,7 +74,7 @@ def _advance_to_next_player(state):
         _resolve_hand(state)
         return
     if _is_round_complete(state):
-        if state.round_idx >= 1: # End game after Flop betting
+        if state.round_idx >= 1: 
             _resolve_hand(state)
         else:
             state.chance_pending = True
@@ -92,7 +90,6 @@ def _is_round_complete(state):
     if not can_act: return True
     if len(set(state.bets[p] for p in can_act)) > 1: return False
     
-    # Check if everyone has acted this street
     hist = state.action_history
     start = 0
     for i in range(len(hist)-1, -1, -1):
@@ -111,7 +108,31 @@ def _resolve_hand(state):
         w = active[0]
         state.stacks = state.stacks[:w] + (state.stacks[w] + state.pot,) + state.stacks[w + 1:]
         return
-    # Standard side pot resolution logic remains valid for Leduc
-    from poker_collusion.env.game_logic import _resolve_side_pots
-    contributions = [20.0 - state.stacks[p] for p in range(NUM_PLAYERS)]
+    contributions = [STARTING_STACK_BB - state.stacks[p] for p in range(NUM_PLAYERS)]
     _resolve_side_pots(state, active, contributions)
+
+def _resolve_side_pots(state, active_players, contributions):
+    """Side pot resolution (Modified from NLHE logic to be Leduc-safe)."""
+    levels = sorted(set(c for c in contributions if c > 0))
+    prev = 0.0
+    for level in levels:
+        eligible_count = [p for p in range(NUM_PLAYERS) if contributions[p] >= level]
+        slice_size = (level - prev) * len(eligible_count)
+        eligible_win = [p for p in eligible_count if state.active[p]]
+        if not eligible_win:
+            prev = level
+            continue
+        best_hand = None
+        winners = []
+        for p in eligible_win:
+            h = evaluate_hand(state.hole_cards[p] + state.board)
+            if best_hand is None or h > best_hand:
+                best_hand, winners = h, [p]
+            elif h == best_hand:
+                winners.append(p)
+        share = slice_size / len(winners)
+        stacks = list(state.stacks)
+        for w in winners:
+            stacks[w] += share
+        state.stacks = tuple(stacks)
+        prev = level
