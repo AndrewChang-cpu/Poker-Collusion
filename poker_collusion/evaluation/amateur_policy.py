@@ -1,6 +1,7 @@
 """
-Competent-amateur policy: hand strength (preflop 2-card, postflop Monte Carlo) + pot odds.
+Competent-amateur policy for Leduc Hold'em: hand strength (normalized rank / Monte Carlo) + pot odds.
 Outputs a probability distribution over legal actions for evaluation vs CFR.
+Modified for 3-player Leduc (1 hole card, 12-card deck).
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from typing import List, Sequence, Tuple
 import numpy as np
 
 from poker_collusion.env.game_state import NLHEState
-from poker_collusion.env.hand_eval import evaluate_hand, card_rank, card_suit
+from poker_collusion.env.hand_eval import evaluate_hand
 
 # Default number of random opponent hands for postflop strength
 DEFAULT_POSTFLOP_SAMPLES = 100
@@ -26,24 +27,13 @@ def _pot_after_call(state: NLHEState, player: int) -> float:
 
 def _preflop_strength(hole_cards: Sequence[int]) -> float:
     """
-    Scalar strength in [0, 1] from two hole cards.
-    Uses high rank, pair, suited, connected.
+    Simplified Leduc preflop strength: direct rank normalization.
+    Ranks 0 (J), 1 (Q), 2 (K), 3 (A) map to [0, 1] range.
     """
-    r0, r1 = sorted([card_rank(c) for c in hole_cards], reverse=True)
-    suited = card_suit(hole_cards[0]) == card_suit(hole_cards[1])
-    connected = (abs(r0 - r1) <= 1) or (r0 == 12 and r1 == 0)  # A2
-
-    if r0 == r1:
-        # Pair: 0.5 + rank component
-        base = 0.5 + (r0 / 13) * 0.4
-    else:
-        # High card: (r0*13 + r1) / 169 normalized to ~[0, 0.5]
-        base = (r0 * 13 + r1) / 169 * 0.45
-    if suited:
-        base += 0.08
-    if connected:
-        base += 0.05
-    return float(np.clip(base, 0.0, 1.0))
+    if not hole_cards:
+        return 0.0
+    # Normalize rank index 0-3 to 0.0-1.0
+    return float(hole_cards[0] / 3.0)
 
 
 def _postflop_strength(
@@ -52,25 +42,30 @@ def _postflop_strength(
     n_samples: int = DEFAULT_POSTFLOP_SAMPLES,
 ) -> float:
     """
-    Monte Carlo hand strength: win rate vs n_samples random opponent hands.
-    Returns float in [0, 1]. Ties count as 0.5.
+    Monte Carlo hand strength for Leduc: win rate vs 1-card opponent from 12-card deck.
+    Ties count as 0.5.
     """
-    my_cards = list(hole_cards) + list(board)
-    my_best = evaluate_hand(my_cards)
+    my_hand = evaluate_hand(list(hole_cards) + list(board))
     used = set(hole_cards) | set(board)
-    deck = [c for c in range(52) if c not in used]
+    
+    # Leduc deck: 4 ranks * 3 suits = 12 cards
+    deck = [0, 1, 2, 3] * 3
+    for c in used:
+        deck.remove(c)
+        
     n = len(deck)
-    if n < 2:
+    if n < 1:
         return 0.5
+        
     wins = 0.0
-    deck = np.array(deck)
     for _ in range(n_samples):
-        idx = np.random.choice(n, size=2, replace=False)
-        opp = [int(deck[idx[0]]), int(deck[idx[1]])]
-        opp_best = evaluate_hand(list(opp) + list(board))
-        if my_best > opp_best:
+        # In Leduc, opponent has 1 hole card
+        opp_card = np.random.choice(deck)
+        opp_hand = evaluate_hand([int(opp_card)] + list(board))
+        
+        if my_hand > opp_hand:
             wins += 1.0
-        elif my_best == opp_best:
+        elif my_hand == opp_hand:
             wins += 0.5
     return wins / n_samples
 
@@ -80,7 +75,6 @@ def _fold_call_raise_weights(
 ) -> Tuple[float, float, float]:
     """
     Base weights (fold_w, call_w, raise_w) from strength and pot odds.
-    facing_bet: True if to_call > 0.
     """
     if not facing_bet:
         # Can check: weak -> check, strong -> raise
@@ -112,15 +106,16 @@ def get_action_probs(
     n_postflop_samples: int = DEFAULT_POSTFLOP_SAMPLES,
 ) -> np.ndarray:
     """
-    Return a probability distribution over legal_actions (same length as legal_actions).
-    state: NLHEState; player: int; legal_actions: list of action indices in [0..9].
+    Return a probability distribution over legal_actions.
+    Modified for Leduc street indices.
     """
     hole = state.hole_cards[player]
     to_call = _to_call(state, player)
     pot_after = _pot_after_call(state, player)
     facing_bet = to_call > 0
 
-    if state.round_idx == 0 or len(state.board) < 3:
+    # Leduc street check: round_idx 0 is preflop, 1 is flop
+    if state.round_idx == 0:
         strength = _preflop_strength(hole)
     else:
         strength = _postflop_strength(hole, state.board, n_postflop_samples)

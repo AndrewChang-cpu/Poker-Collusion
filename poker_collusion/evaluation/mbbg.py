@@ -1,5 +1,6 @@
 """
 Self-play evaluation: mbb/g and block bootstrap standard error.
+Modified to support Shared Information (Psychic) keys during evaluation.
 """
 
 from __future__ import annotations
@@ -30,11 +31,17 @@ Policy = Union[_SupportsAverageStrategy, _SupportsActionProbs, AmateurPolicy]
 
 
 def _get_policy_probs(
-    game: CFRGame, state: Any, player: int, actions: List[int], policy: Policy
+    game: CFRGame, 
+    state: Any, 
+    player: int, 
+    actions: List[int], 
+    policy: Policy,
+    team_seats: Optional[List[int]] = None  # Added in Step 2
 ) -> np.ndarray:
     """Return probability distribution over actions from trainer or amateur policy."""
     if hasattr(policy, "get_average_strategy"):
-        info_key = game.get_info_key(state, player)
+        # Pass team_seats to ensure psychic-trained models use the correct augmented keys
+        info_key = game.get_info_key(state, player, team_seats=team_seats)
         probs = policy.get_average_strategy(info_key, actions)
         if probs is None or len(probs) != len(actions):
             probs = np.ones(len(actions)) / len(actions)
@@ -60,8 +67,15 @@ def play_hand_with_policies(
         actions = game.get_legal_actions(state)
         if not actions:
             break
+        
         policy = policies[player]
-        probs = _get_policy_probs(game, state, player, actions, policy)
+        
+        # Psychic support: extract team context if the policy is a trainer with shared info enabled
+        team_seats = None
+        if hasattr(policy, "use_shared_info") and getattr(policy, "use_shared_info"):
+            team_seats = list(getattr(policy, "team_seats", []))
+            
+        probs = _get_policy_probs(game, state, player, actions, policy, team_seats=team_seats)
         action_idx = np.random.choice(len(actions), p=probs)
         state = game.apply_action(state, actions[action_idx])
     return game.get_payoffs(state)

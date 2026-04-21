@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
 Load blueprint and evaluate mbb/g with block bootstrap SE.
-Usage:
-  python scripts/evaluate.py [--strategy output/blueprint.pkl] [--hands 50000]
-  python scripts/evaluate.py --vs-amateur --strategy output/blueprint.pkl --hands 10000
-  python scripts/evaluate.py --vs-amateur --rotate --hands 10000   # CFR in BTN/SB/BB, report average
-  python scripts/evaluate.py --strategies p0.pkl p1.pkl p2.pkl --hands 50000  # per-player strategies
+Modified for 3-player Leduc Hold'em and Psychic Collusion support.
 """
 
 import os
@@ -40,6 +36,7 @@ from poker_collusion.config import EVAL_HANDS_DEFAULT, EVAL_BLOCK_SIZE, NUM_PLAY
 
 
 class GameModule:
+    """Interface for evaluation logic to interact with the Leduc environment."""
     deal_new_hand      = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
     get_legal_actions  = staticmethod(get_legal_actions)
@@ -51,13 +48,21 @@ class GameModule:
     sample_chance      = staticmethod(sample_chance)
 
 
-def _load_trainer(game: GameModule, path: str) -> CFRTrainer:
+def _load_trainer(game: GameModule, path: str, team_seats=None, shared_info=None) -> CFRTrainer:
+    """Load a strategy file and optionally override psychic/team metadata."""
     full_path = os.path.join(ROOT, path)
     if not os.path.isfile(full_path):
         print(f"Strategy file not found: {full_path}")
         sys.exit(1)
     trainer = CFRTrainer(game, num_players=NUM_PLAYERS)
     trainer.load(full_path)
+    
+    # Apply command line overrides for psychic/team metadata (Step 3)
+    if team_seats is not None:
+        trainer.team_seats = set(team_seats)
+    if shared_info is not None:
+        trainer.use_shared_info = shared_info
+        
     return trainer
 
 
@@ -79,6 +84,11 @@ def main() -> None:
                     help="Seat for CFR when using --vs-amateur (0=BTN, 1=SB, 2=BB)")
     ap.add_argument("--rotate", action="store_true",
                     help="With --vs-amateur: run CFR in all three seats and report average")
+    
+    # Psychic support flags for evaluation (Step 3 additions)
+    ap.add_argument("--shared-info", action="store_true", help="Force Shared Information (Psychic) keys during evaluation")
+    ap.add_argument("--team-seats", type=str, default=None, help="Force team seats (comma-separated, e.g. '0,1')")
+
     ap.add_argument("--team-eval", action="store_true",
                     help="Evaluate a team checkpoint vs a frozen opponent checkpoint")
     ap.add_argument("--team-strategy", type=str, default=None, metavar="PATH",
@@ -88,6 +98,9 @@ def main() -> None:
     args = ap.parse_args()
 
     game = GameModule()
+    
+    # Parse manual team seats if provided via CLI
+    manual_team_seats = [int(s) for s in args.team_seats.split(",")] if args.team_seats else None
 
     # ── Team evaluation mode ──────────────────────────────────────────────────
     if args.team_eval:
@@ -98,19 +111,17 @@ def main() -> None:
             print("Error: --frozen-strategy is required with --team-eval.")
             sys.exit(1)
 
-        team_trainer = _load_trainer(game, args.team_strategy)
+        # Load strategies, applying overrides if provided
+        team_trainer = _load_trainer(game, args.team_strategy, 
+                                     team_seats=manual_team_seats, 
+                                     shared_info=args.shared_info if args.shared_info else None)
         frozen_trainer = _load_trainer(game, args.frozen_strategy)
-
-        if not getattr(frozen_trainer, 'full_history', False):
-            print(
-                f"Note: frozen strategy uses street-only history (full_history=False). "
-                "Postflop lookups will be auto-translated to the full-history key format."
-            )
 
         team_seats = sorted(team_trainer.team_seats)
         if not team_seats:
-            print("Error: team strategy has no team_seats metadata. Was it trained with --team-seats?")
+            print("Error: team strategy has no team_seats metadata. Use --team-seats to override.")
             sys.exit(1)
+            
         frozen_seats = [s for s in range(NUM_PLAYERS) if s not in team_seats]
 
         seat_labels = ["BTN", "SB", "BB"]
@@ -148,7 +159,7 @@ def main() -> None:
             if len(args.strategies) != 2:
                 print("--strategies --rotate requires exactly 2 paths (primary opponent).")
                 sys.exit(1)
-            primary = _load_trainer(game, args.strategies[0])
+            primary = _load_trainer(game, args.strategies[0], team_seats=manual_team_seats, shared_info=args.shared_info if args.shared_info else None)
             opponent = _load_trainer(game, args.strategies[1])
             primary_name = os.path.basename(args.strategies[0])
             opponent_name = os.path.basename(args.strategies[1])
@@ -163,7 +174,7 @@ def main() -> None:
                 block_size=args.block_size,
             )
         elif len(args.strategies) == 1:
-            trainer = _load_trainer(game, args.strategies[0])
+            trainer = _load_trainer(game, args.strategies[0], team_seats=manual_team_seats, shared_info=args.shared_info if args.shared_info else None)
             print("=" * 60)
             print("Blueprint Evaluation (self-play)")
             print("=" * 60)
@@ -173,6 +184,13 @@ def main() -> None:
         elif len(args.strategies) == NUM_PLAYERS:
             trainers = [_load_trainer(game, p) for p in args.strategies]
             names = [os.path.basename(p) for p in args.strategies]
+            
+            # Apply manual overrides to all trainers if specified via CLI
+            if manual_team_seats or args.shared_info:
+                for t in trainers:
+                    if manual_team_seats: t.team_seats = set(manual_team_seats)
+                    if args.shared_info: t.use_shared_info = True
+                    
             print("=" * 60)
             print("Multi-Strategy Evaluation")
             print("=" * 60)
@@ -188,9 +206,9 @@ def main() -> None:
             sys.exit(1)
         return
 
-    # ── Single strategy mode (--strategy or default) ─────────────────────────
+    # ── Single strategy mode ──────────────────────────────────────────────────
     strategy_path = args.strategy or "output/blueprint.pkl"
-    trainer = _load_trainer(game, strategy_path)
+    trainer = _load_trainer(game, strategy_path, team_seats=manual_team_seats, shared_info=args.shared_info if args.shared_info else None)
 
     if args.vs_amateur:
         print("=" * 60)
