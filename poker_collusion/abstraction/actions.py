@@ -63,7 +63,8 @@ def get_legal_action_indices(state):
         for i, total_bb in enumerate(PREFLOP_RAISE_BB):
             if total_bb < min_raise_total:
                 continue
-            if total_bb > stack:
+            # FIX (Step 1): Compare absolute raise size to total wealth on the street
+            if total_bb > (stack + state.bets[p]):
                 break
             if total_bb in seen_totals:
                 continue

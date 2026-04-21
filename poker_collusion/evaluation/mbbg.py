@@ -36,7 +36,7 @@ def _get_policy_probs(
     player: int, 
     actions: List[int], 
     policy: Policy,
-    team_seats: Optional[List[int]] = None  # Added in Step 2
+    team_seats: Optional[List[int]] = None
 ) -> np.ndarray:
     """Return probability distribution over actions from trainer or amateur policy."""
     if hasattr(policy, "get_average_strategy"):
@@ -176,7 +176,15 @@ def summarize_team(
     frozen_seats = [s for s in range(len(mbb_mean)) if s not in team_seats]
 
     team_mbb = sum(mbb_mean[s] for s in team_seats)
-    team_se = (sum(mbb_se[s] ** 2 for s in team_seats)) ** 0.5
+    
+    # FIX (Step 2): In a 3-player zero-sum game, the SE of the team (P0 + P1) 
+    # is identical to the SE of the lone opponent (-P2). Summing individual 
+    # variances incorrectly assumes teammate independence.
+    if len(frozen_seats) == 1:
+        team_se = mbb_se[frozen_seats[0]]
+    else:
+        team_se = (sum(mbb_se[s] ** 2 for s in team_seats)) ** 0.5
+        
     team_labels = "+".join(seat_labels[s] for s in team_seats)
 
     print(f"\n{'— Team summary —':^60}")
