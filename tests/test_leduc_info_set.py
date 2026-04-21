@@ -7,10 +7,10 @@ def test_preflop_info_key():
     hole = state.hole_cards[0][0]
     key = get_info_key(state, 0)
     
-    # (round_idx, bucket, history)
+    # (round_idx, bucket_tuple, history)
     assert key[0] == 0
-    assert key[1] == hole
-    assert isinstance(key[2], tuple)
+    assert key[1] == (hole,) # Verified as tuple
+    assert isinstance(key[1], tuple)
 
 def test_flop_info_key():
     state = deal_new_hand()
@@ -25,9 +25,9 @@ def test_flop_info_key():
     key = get_info_key(state, 0)
     
     assert key[0] == 1
-    # bucket = hole * 4 + board
-    assert key[1] == (hole * 4) + board
-    # History should contain "DEAL"
+    # bucket tuple = ((hole * 4) + board,)
+    assert key[1] == ((hole * 4) + board,)
+    assert isinstance(key[1], tuple)
     assert "DEAL" in key[2]
 
 def test_info_key_determinism():

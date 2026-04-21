@@ -1,15 +1,23 @@
 """
-Updated train script with --shared-info support.
+Updated train script with expanded GameModule and --frozen-strategy support.
+Fixes Bug 4 (Incomplete GameModule Wrapper) and Bug 5 (Frozen Strategy Logic).
 """
 import argparse
+import os
+import pickle
 from poker_collusion.cfr import CFRTrainer
 from poker_collusion.env import (
     deal_new_hand, get_current_player, get_legal_actions,
     get_info_key, is_terminal, get_payoffs, apply_action,
-    is_chance_node, sample_chance
+    is_chance_node, sample_chance, evaluate_hand
 )
+from poker_collusion.env.game_logic import _resolve_side_pots
 
 class GameModule:
+    """
+    Comprehensive interface for the CFRTrainer to interact with the game environment.
+    Exposes both core CFR methods and auxiliary environment logic.
+    """
     deal_new_hand = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
     get_legal_actions = staticmethod(get_legal_actions)
@@ -19,6 +27,18 @@ class GameModule:
     apply_action = staticmethod(apply_action)
     is_chance_node = staticmethod(is_chance_node)
     sample_chance = staticmethod(sample_chance)
+    
+    # Expanded methods for complex interactions (Step 5)
+    evaluate_hand = staticmethod(evaluate_hand)
+    _resolve_side_pots = staticmethod(_resolve_side_pots)
+    
+    @staticmethod
+    def get_average_strategy(info_key, legal_actions):
+        """
+        Fallback strategy provider for consistency.
+        The actual strategy logic is usually handled by a CFRTrainer instance.
+        """
+        return None
 
 def main():
     parser = argparse.ArgumentParser()
@@ -27,19 +47,40 @@ def main():
     parser.add_argument("--team-seats", type=str, default=None)
     parser.add_argument("--shared-info", action="store_true", help="Enable Shared Information (Psychic) variant")
     parser.add_argument("--team-objective", default="utilitarian")
+    parser.add_argument("--frozen-strategy", type=str, default=None, 
+                        help="Path to a baseline strategy file (.pkl) to freeze opponent seats")
     args = parser.parse_args()
 
     team_seats = [int(s) for s in args.team_seats.split(",")] if args.team_seats else None
 
+    # Handle frozen strategy loading
+    frozen_trainer = None
+    if args.frozen_strategy:
+        if os.path.exists(args.frozen_strategy):
+            print(f"Loading frozen strategy from {args.frozen_strategy}...")
+            # Initialize a trainer and load the pre-trained data
+            frozen_trainer = CFRTrainer(GameModule(), num_players=3)
+            frozen_trainer.load(args.frozen_strategy)
+        else:
+            print(f"Warning: Frozen strategy file {args.frozen_strategy} not found. Proceeding without freezing.")
+
     trainer = CFRTrainer(
         GameModule(),
-        use_shared_info=args.shared_info, # NEW
+        use_shared_info=args.shared_info,
         team_seats=team_seats,
+        frozen_trainer=frozen_trainer,
         team_objective=args.team_objective
     )
 
     trainer.train(num_iterations=args.iterations)
+    
+    # Ensure output path exists
+    out_dir = os.path.dirname(args.out)
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+        
     trainer.save(args.out)
+    print(f"Training complete. Strategy saved to {args.out}")
 
 if __name__ == "__main__":
     main()

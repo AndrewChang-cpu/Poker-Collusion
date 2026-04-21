@@ -1,5 +1,5 @@
 """
-MCCFR trainer: modified to support Shared Information (psychic) collusion.
+MCCFR trainer: modified to support Shared Information (psychic) collusion and Frozen Strategies.
 """
 
 from __future__ import annotations
@@ -7,14 +7,18 @@ import os
 import numpy as np
 from tqdm import tqdm
 from poker_collusion.cfr.strategy import regret_matching
-from poker_collusion.config import NUM_ACTIONS, LINEAR_CFR_CUTOFF, PRUNE_THRESHOLD, PRUNE_WARM_UP_ITERATIONS, PRUNE_SKIP_PROBABILITY
+from poker_collusion.config import (
+    NUM_ACTIONS, 
+    LINEAR_CFR_CUTOFF, 
+    LOG_INTERVAL
+)
 
 class CFRTrainer:
     def __init__(
         self,
         game_module,
         num_players: int = 3,
-        use_shared_info: bool = False, # NEW
+        use_shared_info: bool = False,
         team_seats = None,
         frozen_trainer = None,
         team_objective: str = "utilitarian",
@@ -22,7 +26,7 @@ class CFRTrainer:
     ) -> None:
         self.game = game_module
         self.num_players = num_players
-        self.use_shared_info = use_shared_info # NEW
+        self.use_shared_info = use_shared_info
         self.team_seats = set(team_seats) if team_seats else set()
         self.frozen_trainer = frozen_trainer
         self.team_objective = team_objective
@@ -32,9 +36,49 @@ class CFRTrainer:
         self.iteration = 0
         self.linear_cfr_cutoff = LINEAR_CFR_CUTOFF
         self.use_linear_cfr = True
-        self.full_history = True
+
+    def train(self, num_iterations: int) -> None:
+        """Main MCCFR training loop."""
+        pbar = tqdm(range(1, num_iterations + 1), desc="Training MCCFR")
+        for t in pbar:
+            self.iteration = t
+            for p in range(self.num_players):
+                state = self.game.deal_new_hand()
+                self.cfr_traverse(state, traverser=p)
+            
+            if t % LOG_INTERVAL == 0:
+                avg_regret = self._calculate_avg_regret()
+                pbar.set_postfix({"avg_regret": f"{avg_regret:.4f}"})
+
+    def _calculate_avg_regret(self) -> float:
+        """Diagnostic to measure convergence."""
+        if not self.regret_sum: return 0.0
+        total_pos_regret = 0.0
+        count = 0
+        for info_key in self.regret_sum:
+            regrets = self.regret_sum[info_key]
+            actions = self.action_map.get(info_key, [])
+            if not actions: continue
+            pos_regret = sum(max(regrets[a], 0) for a in actions)
+            total_pos_regret += pos_regret / len(actions)
+            count += 1
+        return total_pos_regret / count if count > 0 else 0.0
+
+    def get_average_strategy(self, info_key, legal_actions):
+        """
+        Retrieve the learned strategy for an info set.
+        Used when this trainer acts as a 'Frozen Opponent'.
+        """
+        strat_sum = self.strategy_sum.get(info_key)
+        if strat_sum is None:
+            return np.ones(len(legal_actions)) / len(legal_actions)
+        
+        strat = np.array([strat_sum[a] for a in legal_actions])
+        s = np.sum(strat)
+        return strat / s if s > 0 else np.ones(len(legal_actions)) / len(legal_actions)
 
     def get_strategy(self, info_key, legal_actions):
+        """Current iteration strategy via Regret Matching."""
         regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
         regrets_sub = np.array([regrets_full[a] for a in legal_actions])
         return regret_matching(regrets_sub, len(legal_actions))
@@ -50,18 +94,16 @@ class CFRTrainer:
         player = self.game.get_current_player(state)
         actions = self.game.get_legal_actions(state)
         
-        # Determine if we should pass team_seats for psychic keys
         t_seats = list(self.team_seats) if self.use_shared_info else None
         info_key = self.game.get_info_key(state, player, team_seats=t_seats)
 
         if info_key not in self.action_map:
             self.action_map[info_key] = list(actions)
 
+        # Strategy lookup: use frozen opponent strategy if applicable
         strategy = self.get_strategy(info_key, actions)
         if self.frozen_trainer and player not in self.team_seats:
-            frozen_strat = self.frozen_trainer.get_average_strategy(info_key, actions)
-            if frozen_strat is not None:
-                strategy = frozen_strat
+            strategy = self.frozen_trainer.get_average_strategy(info_key, actions)
 
         if player == traverser:
             values = np.zeros(len(actions))
@@ -95,7 +137,7 @@ class CFRTrainer:
         data = {
             "regret_sum": self.regret_sum, "strategy_sum": self.strategy_sum,
             "action_map": self.action_map, "iteration": self.iteration,
-            "use_shared_info": self.use_shared_info, # NEW
+            "use_shared_info": self.use_shared_info,
             "team_seats": sorted(list(self.team_seats))
         }
         with open(path, "wb") as f: pickle.dump(data, f)
@@ -107,5 +149,5 @@ class CFRTrainer:
         self.strategy_sum = data["strategy_sum"]
         self.action_map = data["action_map"]
         self.iteration = data["iteration"]
-        self.use_shared_info = data.get("use_shared_info", False) # NEW
+        self.use_shared_info = data.get("use_shared_info", False)
         self.team_seats = set(data.get("team_seats", []))

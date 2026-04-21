@@ -1,6 +1,6 @@
 """
 Bucket lookup: (hole_cards, board, round) -> bucket id.
-Loads precomputed tables from data/ when available; fallback to 0.
+Updated for 12-card Leduc Hold'em logic.
 """
 
 from __future__ import annotations
@@ -47,14 +47,7 @@ def _load_tables() -> None:
         if os.path.isfile(p):
             with open(p, "rb") as f:
                 _flop_centers = pickle.load(f)
-        p = _path(TURN_BUCKETS_FILE)
-        if os.path.isfile(p):
-            with open(p, "rb") as f:
-                _turn_centers = pickle.load(f)
-        p = _path(RIVER_BUCKETS_FILE)
-        if os.path.isfile(p):
-            with open(p, "rb") as f:
-                _river_centers = pickle.load(f)
+        # Turn/River placeholders kept for import compatibility
     except Exception:
         pass
 
@@ -63,10 +56,10 @@ def get_bucket(
     hole_cards: Sequence[int], board: Sequence[int], round_idx: int
 ) -> int:
     """
-    Return bucket id in [0, n_buckets-1] for (hole_cards, board) at given round.
-    hole_cards: tuple of 2 ints (card indices 0-51).
-    board: tuple of 0, 3, 4, or 5 ints.
-    round_idx: 0=preflop, 1=flop, 2=turn, 3=river.
+    Return bucket id in [0, n_buckets-1] for Leduc (hole_cards, board).
+    hole_cards: tuple of 1 rank (0-3).
+    board: tuple of 0 or 1 rank.
+    round_idx: 0=preflop, 1=flop.
     """
     _load_tables()
     if round_idx == 0:
@@ -74,56 +67,33 @@ def get_bucket(
             canonical = hole_to_canonical(hole_cards)
             return _preflop_table.get(canonical, 0) % PREFLOP_BUCKETS
         return _preflop_fallback(hole_cards) % PREFLOP_BUCKETS
-    if round_idx == 1 and len(board) >= 3:
+    
+    if round_idx == 1:
         if _flop_centers is not None:
-            return _equity_to_bucket(hole_cards, board, 3, _flop_centers, FLOP_BUCKETS)
+            # For Leduc, board_len is always 1 postflop
+            return _equity_to_bucket(hole_cards, board, 1, _flop_centers, FLOP_BUCKETS)
         return _postflop_fallback(hole_cards, board, FLOP_BUCKETS)
-    if round_idx == 2 and len(board) >= 4:
-        if _turn_centers is not None:
-            return _equity_to_bucket(hole_cards, board, 4, _turn_centers, TURN_BUCKETS)
-        return _postflop_fallback(hole_cards, board, TURN_BUCKETS)
-    if round_idx == 3 and len(board) >= 5:
-        if _river_centers is not None:
-            return _equity_to_bucket(hole_cards, board, 5, _river_centers, RIVER_BUCKETS)
-        return _postflop_fallback(hole_cards, board, RIVER_BUCKETS)
+    
     return 0
 
 
 def hole_to_canonical(hole_cards: Sequence[int]) -> int:
-    """Map 2 cards to 169 canonical hand id (0..168). Matches bucketing_build.preflop_table."""
-    r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
-    s0, s1 = hole_cards[0] // 13, hole_cards[1] // 13
-    high, low = max(r0, r1), min(r0, r1)
-    if high == low:
-        return high
-    suited = 1 if s0 == s1 else 0
-    return 13 + (high - 1) * high + 2 * low + (0 if suited else 1)
+    """Leduc mapping: The rank of the single card is its canonical ID (0-3)."""
+    return hole_cards[0]
 
 
 def _preflop_fallback(hole_cards: Sequence[int], num_buckets: int = PREFLOP_BUCKETS) -> int:
-    """Simple rank-based fallback when no table loaded."""
-    r0, r1 = hole_cards[0] % 13, hole_cards[1] % 13
-    high, low = max(r0, r1), min(r0, r1)
-    suited = (hole_cards[0] // 13) == (hole_cards[1] // 13)
-    score = high * 13 + low
-    if high == low:
-        score += 100
-    if suited:
-        score += 20
-    return int((score / (12 * 13 + 12 + 100 + 20 + 1)) * num_buckets) % num_buckets
+    """Leduc fallback: Direct rank mapping."""
+    return hole_cards[0] % num_buckets
 
 
 def _postflop_fallback(
     hole_cards: Sequence[int], board: Sequence[int], num_buckets: int
 ) -> int:
-    """Fallback: use hand category. Requires hand_eval."""
-    from poker_collusion.env.hand_eval import evaluate_hand
-    cards = list(hole_cards) + list(board)
-    if len(cards) < 5:
+    """Leduc fallback: (hole * 4) + board."""
+    if not board:
         return 0
-    score = evaluate_hand(cards)
-    category = score[0]
-    return int((category / 9.0) * num_buckets) % num_buckets
+    return ((hole_cards[0] * 4) + board[0]) % num_buckets
 
 
 def _equity_to_bucket(
@@ -154,40 +124,47 @@ def _estimate_equity(
     n_rollouts: int = 1000,
 ) -> float:
     """
-    Deterministic, cached Monte Carlo equity estimate vs random opponent (0..1).
-    The same (hole_cards, board) always returns the same value within and across
-    calls, regardless of global random state.
+    Deterministic Leduc MC equity estimate vs random opponent (0..1).
+    Uses 12-card deck and Leduc 2-card hand rules.
     """
     from poker_collusion.env.hand_eval import evaluate_hand
     cache_key: Tuple = (tuple(sorted(hole_cards)), tuple(sorted(board[:board_len])))
     if cache_key in _equity_cache:
         return _equity_cache[cache_key]
 
-    # Derive a deterministic seed from the card values — avoids PYTHONHASHSEED randomisation.
     seed = 0
     for v in cache_key[0] + cache_key[1]:
         seed = seed * 53 + int(v) + 1
     seed &= 0xFFFFFFFF
     rng = random.Random(seed)
 
+    # Leduc specific: 4 ranks * 3 suits = 12 cards
     used = set(hole_cards) | set(board[:board_len])
-    deck = [c for c in range(52) if c not in used]
-    cards_needed = 5 - board_len
+    deck = [c for c in [0, 1, 2, 3]*3 if c not in used] # Simplified deck for equity logic
+    
+    cards_needed = 1 - board_len
     wins = 0.0
     for _ in range(n_rollouts):
         rest = list(deck)
         rng.shuffle(rest)
-        opp = tuple(rest[:2])
-        runout = rest[2:2 + cards_needed]
+        
+        # Opponent gets 1 hole card
+        opp = [rest[0]]
+        # Board gets remaining needed cards
+        runout = rest[1:1 + cards_needed]
         full_board = list(board[:board_len]) + list(runout)
-        if len(full_board) < 5:
+        
+        if not full_board:
             continue
+            
         my_hand = evaluate_hand(list(hole_cards) + full_board)
         opp_hand = evaluate_hand(list(opp) + full_board)
+        
         if my_hand > opp_hand:
             wins += 1.0
         elif my_hand == opp_hand:
             wins += 0.5
+            
     result = wins / n_rollouts
     _equity_cache[cache_key] = result
     return result

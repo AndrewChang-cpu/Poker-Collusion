@@ -1,6 +1,6 @@
 """
-Leduc Info Set: (round_idx, rank_bucket, history).
-Supports "Shared Information" (psychic) keys for colluding teams.
+Leduc Info Set: (round_idx, bucket_tuple, history).
+Standardized to ensure the bucket component is always a tuple.
 """
 
 _DEAL = "DEAL"
@@ -9,30 +9,33 @@ def get_info_key(state, player, team_seats=None):
     """
     Generate hashable keys for Leduc Hold'em.
     
-    If team_seats is provided and 'player' is in that team, the key is 
-    augmented with the hole cards of all teammates.
+    The 'bucket' component is always a tuple:
+    - Standard Preflop: (hole_rank,)
+    - Standard Flop: ((hole_rank * 4) + board_rank,)
+    - Psychic Preflop: (hole_rank, (teammate_ranks...))
+    - Psychic Flop: (hole_rank, (teammate_ranks...), board_rank)
     """
     my_hole = state.hole_cards[player][0]
     round_idx = state.round_idx
 
-    # 1. Determine the "card bucket" component
+    # 1. Determine the "card bucket" component (always a tuple)
     if team_seats and player in team_seats:
         # Psychic variant: Include teammate hole cards in the key
         teammates = [state.hole_cards[s][0] for s in team_seats if s != player]
         if round_idx == 0:
-            # Bucket is a tuple of (my_card, teammate_cards...)
+            # Bucket is (my_card, teammate_cards_tuple)
             bucket = (my_hole, tuple(teammates))
         else:
             board_rank = state.board[0]
-            # Bucket is (my_card, teammate_cards..., board)
+            # Bucket is (my_card, teammate_cards_tuple, board)
             bucket = (my_hole, tuple(teammates), board_rank)
     else:
         # Standard variant: Only my cards and board
         if round_idx == 0:
-            bucket = my_hole
+            bucket = (my_hole,)
         else:
             board_rank = state.board[0]
-            bucket = (my_hole * 4) + board_rank
+            bucket = ((my_hole * 4) + board_rank,)
 
     # 2. Generate the history component
     history = []
