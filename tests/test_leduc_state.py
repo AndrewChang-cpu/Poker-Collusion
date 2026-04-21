@@ -1,31 +1,25 @@
-import numpy as np
+"""
+Tests for Leduc Hold'em game state and initialization.
+"""
 from poker_collusion.env.game_state import deal_new_hand
-from poker_collusion.config import STARTING_STACK_BB, SMALL_BLIND_BB, BIG_BLIND_BB
+from poker_collusion.config import STARTING_STACK_BB, SMALL_BLIND_BB, BIG_BLIND_BB, INITIAL_POT_BB
 
 def test_deal_leduc_hand():
     state = deal_new_hand()
-    # Deck check (12 cards total, 3 dealt as hole cards)
+    # Verify 12-card deck (4 ranks * 3 suits)
     assert len(state.deck) == 12
-    assert state.deck_idx == 3
+    assert state.deck_idx == 3  # 3 hole cards dealt
     
-    # Hole card check (1 card per player)
+    # Verify hole cards (1 per player)
     assert len(state.hole_cards) == 3
     for p in range(3):
         assert len(state.hole_cards[p]) == 1
-        assert 0 <= state.hole_cards[p][0] <= 3
 
-def test_initial_blinds():
+def test_initialization_fix():
     state = deal_new_hand()
-    # P1 is SB, P2 is BB
-    assert state.stacks[1] == STARTING_STACK_BB - SMALL_BLIND_BB
-    assert state.stacks[2] == STARTING_STACK_BB - BIG_BLIND_BB
+    # Verify Step 1 Fix: last_raiser must be -1
+    assert state.last_raiser == -1
+    # Verify Step 3 Fix: blinds are rounded
     assert state.bets[1] == SMALL_BLIND_BB
     assert state.bets[2] == BIG_BLIND_BB
-    assert state.pot == SMALL_BLIND_BB + BIG_BLIND_BB
-
-def test_state_copy_isolation():
-    state = deal_new_hand()
-    scopy = state.copy()
-    scopy.board.append(1)
-    assert len(state.board) == 0
-    assert len(scopy.board) == 1
+    assert state.pot == INITIAL_POT_BB

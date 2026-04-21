@@ -20,3 +20,9 @@ def test_pre_showdown_eval():
     # Test evaluation with only hole card (used in some logic/debug)
     assert evaluate_hand([3]) == 3
     assert evaluate_hand([]) == -1
+
+def test_leduc_pair_rankings():
+    # Pair of Jacks (100) vs Ace high (3)
+    assert evaluate_hand([0, 0]) > evaluate_hand([3, 1])
+    # Pair of Kings (102) vs Pair of Queens (101)
+    assert evaluate_hand([2, 2]) > evaluate_hand([1, 1])

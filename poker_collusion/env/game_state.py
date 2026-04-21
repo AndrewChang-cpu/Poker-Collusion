@@ -1,5 +1,6 @@
 """
 Game state for 3-player Leduc Hold'em: 12-card deck, 1 hole card per player.
+Modified to fix pre-flop termination by setting last_raiser to -1.
 """
 
 import numpy as np
@@ -83,7 +84,9 @@ def deal_new_hand():
     state.bets = tuple(bets)
     state.pot = INITIAL_POT_BB
     state.current_player = 0
-    state.last_raiser = 2
+    
+    # Corrected: Set to -1 so pre-flop ends after Big Blind (P2) acts.
+    state.last_raiser = -1 
     state.last_raise_amount = BIG_BLIND_BB
     return state
 
