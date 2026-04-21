@@ -118,3 +118,18 @@ python scripts/validate_team.py --frozen-strategy output/blueprint_claude_v3_321
 
 - The original `cfr.py`, `nlhe3p.py`, `kuhn3p.py`, and `evaluate.py` at the repo root remain for reference; the canonical implementation is in `poker_collusion/` and `scripts/`.
 - For Milestone 2 (cooperation), use a modified trainer that optimizes a shared objective for two of the three players.
+
+
+Rules of Modified Leduc Hold'em
+Players: 3 players (Button, SB, BB).
+Deck: 12 cards consisting of 4 ranks (Ace, King, Queen, Jack) and 3 suits.
+Dealing: Each player receives one hole card.
+Community Cards: Exactly one community card is dealt after the first betting round.
+Betting Rounds: Two rounds total:
+Round 0 (Preflop): Players act with only their hole card.
+Round 1 (Flop): Players act after the community card is revealed.
+Betting Rules: Standard No-Limit betting (Check, Call, Raise, All-in) remains active.
+Hand Ranking:
+Pair: A player's hole card matches the community card rank.
+High Card: No match; ranks follow A > K > Q > J.
+Note: Suits do not affect hand strength.
