@@ -112,7 +112,11 @@ class CFRTrainer:
 
             ev = float(strategy @ values)
             regret_update = values - ev
-            weight = self.iteration if self.iteration <= self.linear_cfr_cutoff else 1.0
+            
+            # FIX (Step 1): Cap the weight at the cutoff to maintain learning significance.
+            # Standard Linear CFR uses 'iteration' as weight. Resetting to 1.0 after 
+            # the cutoff makes later iterations negligible.
+            weight = float(min(self.iteration, self.linear_cfr_cutoff))
 
             if info_key not in self.regret_sum: self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
             if info_key not in self.strategy_sum: self.strategy_sum[info_key] = np.zeros(NUM_ACTIONS)

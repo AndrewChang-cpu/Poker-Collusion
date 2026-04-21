@@ -2,7 +2,7 @@
 """
 Load blueprint and evaluate mbb/g with block bootstrap SE.
 Modified for 3-player Leduc Hold'em and Psychic Collusion support.
-Standardized CLI overrides for Shared Information (Step 3).
+Standardized Policy Interfaces (Step 3).
 """
 
 import os

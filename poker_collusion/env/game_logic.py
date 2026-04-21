@@ -1,6 +1,7 @@
 """
 Game logic for Leduc Hold'em: legal actions, apply_action, sample_chance, round advancement.
 Modified to remove circular imports and resolve precision issues via rounding.
+Step 2: Added remainder distribution to prevent chip bleeding in split pots.
 """
 
 from poker_collusion.config import NUM_PLAYERS, STARTING_STACK_BB, POSTFLOP_ORDER
@@ -195,7 +196,10 @@ def _resolve_hand(state):
 
 
 def _resolve_side_pots(state, active_players, contributions):
-    """Distribute pot among active players based on contributions and hand rank."""
+    """
+    Distribute pot among active players based on contributions and hand rank.
+    Step 2: awarding the rounding remainder to the first winner to maintain chip total.
+    """
     levels = sorted(set(c for c in contributions if c > 0))
     prev = 0.0
     for level in levels:
@@ -219,9 +223,17 @@ def _resolve_side_pots(state, active_players, contributions):
             elif h == best_hand:
                 winners.append(p)
         
+        # Calculate individual share and remaining 'cents' due to rounding
         share = round(slice_size / len(winners), 2)
+        total_distributed = round(share * len(winners), 2)
+        remainder = round(slice_size - total_distributed, 2)
+        
         stacks = list(state.stacks)
-        for w in winners:
-            stacks[w] = round(stacks[w] + share, 2)
+        for i, w in enumerate(winners):
+            add = share
+            if i == 0:
+                # Award the rounding remainder to the first winner (OOP player)
+                add = round(add + remainder, 2)
+            stacks[w] = round(stacks[w] + add, 2)
         state.stacks = tuple(stacks)
         prev = level

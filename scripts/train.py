@@ -1,6 +1,6 @@
 """
 Updated train script with expanded GameModule and --frozen-strategy support.
-Fixes Bug 4 (Incomplete GameModule Wrapper) and Bug 5 (Frozen Strategy Logic).
+Fixes Bug 3: Standardized Policy Interfaces (Step 3).
 """
 import argparse
 import os
@@ -28,17 +28,9 @@ class GameModule:
     is_chance_node = staticmethod(is_chance_node)
     sample_chance = staticmethod(sample_chance)
     
-    # Expanded methods for complex interactions (Step 5)
+    # Auxiliary environment methods
     evaluate_hand = staticmethod(evaluate_hand)
     _resolve_side_pots = staticmethod(_resolve_side_pots)
-    
-    @staticmethod
-    def get_average_strategy(info_key, legal_actions):
-        """
-        Fallback strategy provider for consistency.
-        The actual strategy logic is usually handled by a CFRTrainer instance.
-        """
-        return None
 
 def main():
     parser = argparse.ArgumentParser()

@@ -1,6 +1,6 @@
 """
 Self-play evaluation: mbb/g and block bootstrap standard error.
-Modified to support Shared Information (Psychic) keys during evaluation.
+Standardized Policy Interfaces (Step 3).
 """
 
 from __future__ import annotations
@@ -39,15 +39,25 @@ def _get_policy_probs(
     team_seats: Optional[List[int]] = None
 ) -> np.ndarray:
     """Return probability distribution over actions from trainer or amateur policy."""
+    
+    # 1. Check for CFR Strategy Interface
     if hasattr(policy, "get_average_strategy"):
-        # Pass team_seats to ensure psychic-trained models use the correct augmented keys
         info_key = game.get_info_key(state, player, team_seats=team_seats)
         probs = policy.get_average_strategy(info_key, actions)
-        if probs is None or len(probs) != len(actions):
-            probs = np.ones(len(actions)) / len(actions)
-    else:
-        probs = policy.get_action_probs(state, player, actions)
-    return probs
+        if probs is not None:
+            if len(probs) != len(actions):
+                raise ValueError(f"Strategy returned {len(probs)} probabilities, but {len(actions)} actions are legal.")
+            return probs
+            
+    # 2. Check for Amateur Policy Interface
+    if hasattr(policy, "get_action_probs"):
+        return policy.get_action_probs(state, player, actions)
+
+    # 3. Standardize Policy Interface (Step 3): Fail explicitly on invalid policy types
+    raise TypeError(
+        f"Invalid policy object for player {player}: {type(policy)}. "
+        "Policy must support 'get_average_strategy' (CFR) or 'get_action_probs' (Amateur)."
+    )
 
 
 def play_hand_with_policies(
@@ -177,9 +187,6 @@ def summarize_team(
 
     team_mbb = sum(mbb_mean[s] for s in team_seats)
     
-    # FIX (Step 2): In a 3-player zero-sum game, the SE of the team (P0 + P1) 
-    # is identical to the SE of the lone opponent (-P2). Summing individual 
-    # variances incorrectly assumes teammate independence.
     if len(frozen_seats) == 1:
         team_se = mbb_se[frozen_seats[0]]
     else:
