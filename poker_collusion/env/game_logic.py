@@ -71,7 +71,11 @@ def apply_action(state, action_index):
 def _advance_to_next_player(state):
     can_act = [p for p in range(NUM_PLAYERS) if state.active[p] and not state.all_in[p]]
     if not can_act:
-        _resolve_hand(state)
+        if state.round_idx == 0:
+            state.chance_pending = True   # deal community card first
+            state.current_player = -1
+        else:
+            _resolve_hand(state)
         return
     if _is_round_complete(state):
         if state.round_idx >= 1: 

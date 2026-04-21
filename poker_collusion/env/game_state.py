@@ -8,6 +8,7 @@ from poker_collusion.config import (
     STARTING_STACK_BB,
     SMALL_BLIND_BB,
     BIG_BLIND_BB,
+    INITIAL_POT_BB
 )
 
 DEAL = "DEAL"
