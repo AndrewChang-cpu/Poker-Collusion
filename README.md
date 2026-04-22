@@ -98,6 +98,11 @@ python scripts/evaluate.py --team-eval \
 # 7. Run D1 correctness checks (frozen immutability, terminal values, traverser skip)
 python scripts/validate_team.py --frozen-strategy output/blueprint_claude_v3_32100.pkl
 
+
+# LEDUC
+python scripts/train.py --iterations 100000 --shared-info --team-seats 0,1 --frozen-strategy output/leduc_baseline_100k.pkl --out output/leduc_comm_allowed.pkl
+
+
 ```
 
 ## Game Parameters (from formulation)
