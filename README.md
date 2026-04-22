@@ -58,8 +58,8 @@ python scripts/train.py --iterations 10000 --out output/blueprint.pkl --linear-c
 python scripts/train.py --iterations 10000 --out output/blueprint.pkl --checkpoint-every 2000
 # Writes output/blueprint_2000.pkl, output/blueprint_4000.pkl, ... and final to output/blueprint.pkl
 
-# Optional: resume from a saved strategy (runs --iterations more, then overwrites --out)
-python scripts/train.py --load output/blueprint.pkl --iterations 5000 --out output/blueprint.pkl
+# Optional: resume from a saved strategy (trains up to --iterations total)
+python scripts/train.py --resume-from output/blueprint.pkl --iterations 15000 --out output/blueprint.pkl
 
 # 3. Evaluate
 python scripts/evaluate.py --strategy output/blueprint.pkl --hands 50000
@@ -99,8 +99,6 @@ python scripts/evaluate.py --team-eval \
 python scripts/validate_team.py --frozen-strategy output/blueprint_claude_v3_32100.pkl
 
 
-# LEDUC
-python scripts/train.py --iterations 100000 --shared-info --team-seats 0,1 --frozen-strategy output/leduc_baseline_100k.pkl --out output/leduc_comm_allowed.pkl
 
 python scripts/train.py --resume-from output/leduc_baseline_100k.pkl --iterations 1000000 --out output/leduc_baseline_1000k.pkl
 
@@ -141,3 +139,37 @@ Hand Ranking:
 Pair: A player's hole card matches the community card rank.
 High Card: No match; ranks follow A > K > Q > J.
 Note: Suits do not affect hand strength.
+
+## Leduc Commands
+
+Experimental ladder: **Floor** (NE self-play) → **Observable signaling** (team utility, standard info keys) → **Centralized+decentralized** (free-comm trained, no-comm deployment) → **Free communication / ceiling** (shared info keys, `--shared-info`).
+
+A pre-trained 100k baseline is at `output/leduc_baseline_100k.pkl`.
+
+```bash
+# Train NE self-play baseline (floor)
+python3t scripts/train.py --iterations 100000 --out output/leduc_baseline.pkl
+
+# Evaluate self-play
+python3 scripts/evaluate.py --strategy output/leduc_baseline_100k.pkl --hands 50000
+
+# Evaluate vs amateur (single seat or rotated)
+python3 scripts/evaluate.py --strategy output/leduc_baseline_100k.pkl --vs-amateur --cfr-seat 0 --hands 10000
+python3 scripts/evaluate.py --strategy output/leduc_baseline_100k.pkl --vs-amateur --rotate --hands 10000
+
+# Train observable-signaling team (approach 1): BTN+SB share utility, BB frozen at NE
+python3t scripts/train.py --iterations 100000 --team-seats 0,1 --frozen-strategy output/leduc_baseline_100k.pkl --team-objective utilitarian --out output/leduc_team_signaling.pkl
+
+# Train free-communication team (ceiling / also used for centralized+decentralized):
+# adds teammate's hole rank to info key during training
+python3t scripts/train.py --iterations 100000 --team-seats 0,1 --frozen-strategy output/leduc_baseline_100k.pkl --team-objective utilitarian --shared-info --out output/leduc_team_free_comm.pkl
+
+# Evaluate team vs frozen NE BB
+python3 scripts/evaluate.py --team-eval --team-strategy output/leduc_team_signaling.pkl --frozen-strategy output/leduc_baseline_100k.pkl --hands 50000
+python3 scripts/evaluate.py --team-eval --team-strategy output/leduc_comm_allowed_01.pkl --frozen-strategy output/leduc_baseline_100k.pkl --hands 50000 --shared-info
+
+# Centralized+decentralized: same free-comm trained model, deployed without communication.
+# At inference, marginalizes over possible teammate ranks using a card-removal prior.
+# Expected ordering: NE < observable signaling < centralized+decentralized < free-comm
+python3 scripts/evaluate.py --team-eval --decentralized --team-strategy output/leduc_team_free_comm.pkl --frozen-strategy output/leduc_baseline_100k.pkl --hands 50000
+```

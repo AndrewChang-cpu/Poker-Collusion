@@ -37,7 +37,6 @@ from poker_collusion.config import EVAL_HANDS_DEFAULT, EVAL_BLOCK_SIZE, NUM_PLAY
 
 
 class GameModule:
-    """Interface for evaluation logic to interact with the Leduc environment."""
     deal_new_hand      = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
     get_legal_actions  = staticmethod(get_legal_actions)
@@ -97,10 +96,13 @@ def main() -> None:
                     help="Path to team-trained .pkl (required with --team-eval)")
     ap.add_argument("--frozen-strategy", type=str, default=None, metavar="PATH",
                     help="Path to frozen opponent .pkl (required with --team-eval)")
+    ap.add_argument("--decentralized", action="store_true",
+                    help="With --team-eval: deploy full-comm model without communication "
+                         "(marginalizes over teammate ranks at inference)")
     args = ap.parse_args()
 
     game = GameModule()
-    
+
     # Parse manual team seats if provided via CLI
     manual_team_seats = [int(s) for s in args.team_seats.split(",")] if args.team_seats else None
 
@@ -113,9 +115,8 @@ def main() -> None:
             print("Error: --frozen-strategy is required with --team-eval.")
             sys.exit(1)
 
-        # Load strategies, applying overrides directly
-        team_trainer = _load_trainer(game, args.team_strategy, 
-                                     team_seats=manual_team_seats, 
+        team_trainer = _load_trainer(game, args.team_strategy,
+                                     team_seats=manual_team_seats,
                                      shared_info=args.shared_info)
         frozen_trainer = _load_trainer(game, args.frozen_strategy)
 
@@ -123,22 +124,32 @@ def main() -> None:
         if not team_seats:
             print("Error: team strategy has no team_seats metadata. Use --team-seats to override.")
             sys.exit(1)
-            
+
         frozen_seats = [s for s in range(NUM_PLAYERS) if s not in team_seats]
-
         seat_labels = ["BTN", "SB", "BB"]
-        policies = [None] * NUM_PLAYERS
-        names = [None] * NUM_PLAYERS
-        for s in team_seats:
-            policies[s] = team_trainer
-            names[s] = f"Team ({seat_labels[s]})"
-        for s in frozen_seats:
-            policies[s] = frozen_trainer
-            names[s] = f"Frozen ({seat_labels[s]})"
 
-        obj = getattr(team_trainer, "team_objective", "utilitarian")
+        if args.decentralized:
+            from poker_collusion.evaluation.team_policy import CentralizedToDecentralizedPolicy
+            policies = [
+                CentralizedToDecentralizedPolicy(team_trainer, s) if s in team_seats
+                else frozen_trainer
+                for s in range(NUM_PLAYERS)
+            ]
+            mode = "decentralized"
+        else:
+            policies = [
+                team_trainer if s in team_seats else frozen_trainer
+                for s in range(NUM_PLAYERS)
+            ]
+            mode = getattr(team_trainer, "team_objective", "utilitarian")
+
+        names = [
+            f"Team/{mode} ({seat_labels[s]})" if s in team_seats else f"Frozen ({seat_labels[s]})"
+            for s in range(NUM_PLAYERS)
+        ]
+
         print("=" * 60)
-        print(f"Team Evaluation: seats {team_seats} vs frozen {frozen_seats} (objective={obj})")
+        print(f"Team Evaluation [{mode}]: seats {team_seats} vs frozen {frozen_seats}")
         print("=" * 60)
 
         mbb_mean, mbb_se = evaluate_strategies(
