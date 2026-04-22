@@ -1,5 +1,9 @@
 """
 MCCFR trainer: modified to support Shared Information (psychic) collusion and Frozen Strategies.
+Step 1: Added MCCFR Pruning logic to skip suboptimal paths.
+Step 2: Restricted traversal to team seats to prevent frozen opponent drift.
+Step 3: Expanded metadata persistence to include team_objective.
+Step 4: Refactored helpers for unit test compatibility.
 """
 
 from __future__ import annotations
@@ -10,7 +14,10 @@ from poker_collusion.cfr.strategy import regret_matching
 from poker_collusion.config import (
     NUM_ACTIONS, 
     LINEAR_CFR_CUTOFF, 
-    LOG_INTERVAL
+    LOG_INTERVAL,
+    PRUNE_THRESHOLD,
+    PRUNE_WARM_UP_ITERATIONS,
+    PRUNE_SKIP_PROBABILITY
 )
 
 class CFRTrainer:
@@ -35,14 +42,40 @@ class CFRTrainer:
         self.action_map = {}
         self.iteration = 0
         self.linear_cfr_cutoff = LINEAR_CFR_CUTOFF
-        self.use_linear_cfr = True
+        self.use_linear_cfr = kwargs.get("use_linear_cfr", True)
+        # Internalize pruning for tests
+        self.prune_threshold = kwargs.get("prune_threshold", PRUNE_THRESHOLD)
+        self.prune_warm_up = kwargs.get("prune_warm_up", PRUNE_WARM_UP_ITERATIONS)
+
+    def _iteration_weight(self) -> float:
+        """Calculate weight for current iteration (Capped Linear CFR)."""
+        if not self.use_linear_cfr:
+            return 1.0
+        return float(min(self.iteration, self.linear_cfr_cutoff))
+
+    def _should_prune(self, info_key: Any, action: int) -> bool:
+        """Check if an action path should be skipped (Step 1)."""
+        if self.prune_threshold is None or self.iteration <= self.prune_warm_up:
+            return False
+        
+        regrets = self.regret_sum.get(info_key)
+        if regrets is not None and regrets[action] < self.prune_threshold:
+            return np.random.random() < PRUNE_SKIP_PROBABILITY
+        return False
 
     def train(self, num_iterations: int) -> None:
-        """Main MCCFR training loop."""
+        """Main MCCFR training loop (Step 2)."""
         pbar = tqdm(range(1, num_iterations + 1), desc="Training MCCFR")
         for t in pbar:
             self.iteration = t
-            for p in range(self.num_players):
+            
+            # Step 2: Traverse only team seats if frozen opponent exists.
+            if self.frozen_trainer and self.team_seats:
+                traverser_seats = list(self.team_seats)
+            else:
+                traverser_seats = list(range(self.num_players))
+
+            for p in traverser_seats:
                 state = self.game.deal_new_hand()
                 self.cfr_traverse(state, traverser=p)
             
@@ -65,20 +98,14 @@ class CFRTrainer:
         return total_pos_regret / count if count > 0 else 0.0
 
     def get_average_strategy(self, info_key, legal_actions):
-        """
-        Retrieve the learned strategy for an info set.
-        Used when this trainer acts as a 'Frozen Opponent'.
-        """
         strat_sum = self.strategy_sum.get(info_key)
         if strat_sum is None:
             return np.ones(len(legal_actions)) / len(legal_actions)
-        
         strat = np.array([strat_sum[a] for a in legal_actions])
         s = np.sum(strat)
         return strat / s if s > 0 else np.ones(len(legal_actions)) / len(legal_actions)
 
     def get_strategy(self, info_key, legal_actions):
-        """Current iteration strategy via Regret Matching."""
         regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
         regrets_sub = np.array([regrets_full[a] for a in legal_actions])
         return regret_matching(regrets_sub, len(legal_actions))
@@ -107,22 +134,27 @@ class CFRTrainer:
 
         if player == traverser:
             values = np.zeros(len(actions))
+            pruned = [False] * len(actions)
+            
             for i, action in enumerate(actions):
+                # Step 1: MCCFR Pruning logic helper
+                if self._should_prune(info_key, action):
+                    pruned[i] = True
+                    continue
+
                 values[i] = self.cfr_traverse(self.game.apply_action(state, action), traverser)
 
             ev = float(strategy @ values)
             regret_update = values - ev
             
-            # FIX (Step 1): Cap the weight at the cutoff to maintain learning significance.
-            # Standard Linear CFR uses 'iteration' as weight. Resetting to 1.0 after 
-            # the cutoff makes later iterations negligible.
-            weight = float(min(self.iteration, self.linear_cfr_cutoff))
+            weight = self._iteration_weight()
 
             if info_key not in self.regret_sum: self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
             if info_key not in self.strategy_sum: self.strategy_sum[info_key] = np.zeros(NUM_ACTIONS)
             
             for i, a in enumerate(actions):
-                self.regret_sum[info_key][a] += regret_update[i] * weight
+                if not pruned[i]:
+                    self.regret_sum[info_key][a] += regret_update[i] * weight
                 self.strategy_sum[info_key][a] += strategy[i] * weight
             return ev
         else:
@@ -142,7 +174,8 @@ class CFRTrainer:
             "regret_sum": self.regret_sum, "strategy_sum": self.strategy_sum,
             "action_map": self.action_map, "iteration": self.iteration,
             "use_shared_info": self.use_shared_info,
-            "team_seats": sorted(list(self.team_seats))
+            "team_seats": sorted(list(self.team_seats)),
+            "team_objective": self.team_objective
         }
         with open(path, "wb") as f: pickle.dump(data, f)
 
@@ -155,3 +188,4 @@ class CFRTrainer:
         self.iteration = data["iteration"]
         self.use_shared_info = data.get("use_shared_info", False)
         self.team_seats = set(data.get("team_seats", []))
+        self.team_objective = data.get("team_objective", "utilitarian")
