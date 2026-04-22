@@ -7,3 +7,4 @@ nlhe3p_strategy.pkl
 # .vibe/
 .env
 archive/
+output_gitignored/
