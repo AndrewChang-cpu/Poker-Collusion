@@ -1,22 +1,6 @@
 """
 MCCFR training script.
-
-Usage:
-  python scripts/train.py --iterations 10000 --out output/blueprint.pkl
-
-  # Resume training to a target total
-  python scripts/train.py --resume-from output/leduc_1m.pkl --iterations 10000000 --out output/leduc_10m.pkl
-
-  # Plot a per-seat mbb/g learning curve (evaluated every 1M iterations, 100k hands each)
-  python scripts/train.py --iterations 10000000 --out output/leduc_10m.pkl --plot-every 1000000
-
-  # Team: observable signaling (team seats 0,1 vs frozen BB)
-  python scripts/train.py --team-seats 0,1 \
-      --frozen-strategy output/leduc_ne.pkl --iterations 500000 --out output/leduc_obs_signal.pkl
-
-  # Team: free communication (full info keys for team members)
-  python scripts/train.py --team-seats 0,1 --shared-info \
-      --frozen-strategy output/leduc_ne.pkl --iterations 500000 --out output/leduc_free_comm.pkl
+Step 5 & 6 (Phase 2): Added support for victim modeling, merged loading, and co-evolution.
 """
 import argparse
 import contextlib
@@ -92,16 +76,29 @@ def _plot_curve(checkpoints, plot_out):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--iterations", "-n", type=int, default=1000,
-                        help="Target total number of iterations")
+                        help="Target total number of iterations (e.g. 200000)")
     parser.add_argument("--out", "-o", default="output/blueprint.pkl")
-    parser.add_argument("--resume-from", type=str, default=None,
-                        help="Path to an existing .pkl to resume training from")
+    
+    # Phase 2: Resume from multiple checkpoints (e.g. victim baseline + psychic team)
+    parser.add_argument("--resume-from", nargs="+", metavar="PATH",
+                        help="One or more existing .pkl files to load/merge")
+    
     parser.add_argument("--team-seats", type=str, default=None)
     parser.add_argument("--shared-info", action="store_true",
                         help="Full-comm: include teammate card rank in info key (team members only)")
     parser.add_argument("--team-objective", default="utilitarian")
+    
+    # Phase 2: Specify which seats are actively updating regrets
+    parser.add_argument("--train-seats", type=str, default=None,
+                        help="Seats to train (traversers). Default: all. Example: '2' for victim only.")
+    
+    # Phase 2: Reset strategy sum for co-evolution pivot
+    parser.add_argument("--reset-strategy-sum", action="store_true",
+                        help="Clear the accumulated average strategy (S) while keeping regrets (R)")
+    
     parser.add_argument("--frozen-strategy", type=str, default=None,
-                        help="Path to pre-trained .pkl to freeze non-team seats")
+                        help="Path to pre-trained .pkl to act as static strategy for non-training seats")
+    
     parser.add_argument("--plot-every", type=int, default=0, metavar="N",
                         help="Evaluate and record a curve point every N iterations (0 = disabled)")
     parser.add_argument("--eval-hands", type=int, default=100_000, metavar="N",
@@ -111,8 +108,10 @@ def main():
     args = parser.parse_args()
 
     team_seats = [int(s) for s in args.team_seats.split(",")] if args.team_seats else None
+    train_seats = [int(s) for s in args.train_seats.split(",")] if args.train_seats else None
     game = GameModule()
 
+    # Initialize frozen strategy provider if specified
     frozen_trainer = None
     if args.frozen_strategy:
         if os.path.exists(args.frozen_strategy):
@@ -122,22 +121,33 @@ def main():
         else:
             print(f"Warning: {args.frozen_strategy} not found. Proceeding without freezing.")
 
+    # Initialize trainer with Phase 2 configurations
     trainer = CFRTrainer(
         game,
         num_players=NUM_PLAYERS,
         use_shared_info=args.shared_info,
         team_seats=team_seats,
+        train_seats=train_seats,
         frozen_trainer=frozen_trainer,
         team_objective=args.team_objective,
     )
 
+    # Phase 2: Load and Merge checkpoints
     if args.resume_from:
-        if os.path.exists(args.resume_from):
-            print(f"Resuming training from {args.resume_from}...")
-            trainer.load(args.resume_from)
-        else:
-            print(f"Error: {args.resume_from} not found.")
-            sys.exit(1)
+        for i, path in enumerate(args.resume_from):
+            if os.path.exists(path):
+                # Use merge=True for all subsequent checkpoints after the first
+                is_merge = (i > 0)
+                print(f"Loading checkpoint from {path} (merge={is_merge})...")
+                trainer.load(path, merge=is_merge)
+            else:
+                print(f"Error: {path} not found.")
+                sys.exit(1)
+
+    # Phase 2: Optional strategy reset
+    if args.reset_strategy_sum:
+        print("Resetting accumulated strategy sum for all seats...")
+        trainer.reset_strategy_sum()
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
 

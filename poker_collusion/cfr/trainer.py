@@ -1,11 +1,10 @@
 """
-MCCFR trainer: modified to support Shared Information (psychic) collusion and Frozen Strategies.
-Step 1 (Resume): Updated train() to support starting from self.iteration + 1.
-Includes fixes for Normalization, Unbiased Pruning, and Traversal Restrictions.
+MCCFR trainer: modified to support victim modeling and co-evolution.
+Fixed: Restored _should_prune helper for unit test compatibility.
 """
 
 from __future__ import annotations
-from typing import Any
+from typing import Any, List, Optional, Set
 import os
 import numpy as np
 from tqdm import tqdm
@@ -28,6 +27,7 @@ class CFRTrainer:
         team_seats = None,
         frozen_trainer = None,
         team_objective: str = "utilitarian",
+        train_seats = None,
         **kwargs
     ) -> None:
         self.game = game_module
@@ -36,6 +36,12 @@ class CFRTrainer:
         self.team_seats = set(team_seats) if team_seats else set()
         self.frozen_trainer = frozen_trainer
         self.team_objective = team_objective
+        
+        if train_seats is not None:
+            self.training_seats = set(train_seats)
+        else:
+            self.training_seats = set(range(num_players))
+            
         self.regret_sum = {}
         self.strategy_sum = {}
         self.action_map = {}
@@ -51,57 +57,54 @@ class CFRTrainer:
             return 1.0
         return float(min(self.iteration, self.linear_cfr_cutoff))
 
+    def _should_prune(self, info_key: Any, action: int, strategy_val: float = 0.0) -> bool:
+        """
+        Check if an action path should be skipped (Step 1).
+        Requires strategy_val == 0 to ensure unbiased pruning.
+        """
+        if strategy_val != 0: 
+            return False
+        if self.prune_threshold is None or self.iteration <= self.prune_warm_up:
+            return False
+        
+        regrets = self.regret_sum.get(info_key)
+        if regrets is not None and regrets[action] < self.prune_threshold:
+            return np.random.random() < PRUNE_SKIP_PROBABILITY
+        return False
+
     def _calculate_avg_regret(self) -> float:
-        """
-        Diagnostic to measure convergence.
-        Normalizes accumulated regrets by the sum of weights.
-        """
+        """Diagnostic to measure convergence with normalization."""
         if not self.regret_sum or self.iteration == 0: 
             return 0.0
         
-        # Calculate mathematical sum of weights for the current progress
         if not self.use_linear_cfr:
             weight_sum = float(self.iteration)
         else:
-            C = self.linear_cfr_cutoff
-            T = self.iteration
-            if T <= C:
-                weight_sum = T * (T + 1) / 2
-            else:
-                # Sum of weights 1..C plus remaining iterations at weight C
-                weight_sum = (C * (C + 1) / 2) + (T - C) * C
+            C, T = self.linear_cfr_cutoff, self.iteration
+            weight_sum = (T*(T+1)/2) if T <= C else (C*(C+1)/2 + (T-C)*C)
         
         total_pos_avg_regret = 0.0
         count = 0
         for info_key in self.regret_sum:
             regrets = self.regret_sum[info_key]
             actions = self.action_map.get(info_key, [])
-            if not actions: 
-                continue
+            if not actions: continue
             pos_regret_sum = sum(max(regrets[a], 0) for a in actions)
             total_pos_avg_regret += (pos_regret_sum / weight_sum) / len(actions)
             count += 1
-            
         return total_pos_avg_regret / count if count > 0 else 0.0
 
     def train(self, target_iterations: int) -> None:
-        """Main MCCFR training loop. Resumes if self.iteration > 0 (Step 1)."""
+        """Main MCCFR training loop."""
         start_iter = self.iteration + 1
         if start_iter > target_iterations:
-            print(f"Trainer already at {self.iteration} iterations. No further training needed.")
+            print(f"Trainer already at {self.iteration} iterations.")
             return
 
         pbar = tqdm(range(start_iter, target_iterations + 1), desc="Training MCCFR")
         for t in pbar:
             self.iteration = t
-            
-            # Restrict traversal to team seats if a frozen opponent exists
-            if self.frozen_trainer and self.team_seats:
-                traverser_seats = list(self.team_seats)
-            else:
-                traverser_seats = list(range(self.num_players))
-
-            for p in traverser_seats:
+            for p in self.training_seats:
                 state = self.game.deal_new_hand()
                 self.cfr_traverse(state, traverser=p)
             
@@ -139,30 +142,26 @@ class CFRTrainer:
         if info_key not in self.action_map:
             self.action_map[info_key] = list(actions)
 
-        strategy = self.get_strategy(info_key, actions)
-        if self.frozen_trainer and player not in self.team_seats:
+        if player in self.training_seats:
+            strategy = self.get_strategy(info_key, actions)
+        elif self.frozen_trainer:
             strategy = self.frozen_trainer.get_average_strategy(info_key, actions)
+        else:
+            strategy = self.get_strategy(info_key, actions)
 
         if player == traverser:
             values = np.zeros(len(actions))
             pruned = [False] * len(actions)
             
-            regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
-            
             for i, action in enumerate(actions):
-                # Unbiased pruning: skip if strategy[i] == 0 and regret is below threshold
-                if (strategy[i] == 0 and 
-                    self.iteration > self.prune_warm_up and 
-                    regrets_full[action] < self.prune_threshold and 
-                    np.random.random() < PRUNE_SKIP_PROBABILITY):
+                # Use restored helper method for pruning check
+                if self._should_prune(info_key, action, strategy[i]):
                     pruned[i] = True
                     continue
-
                 values[i] = self.cfr_traverse(self.game.apply_action(state, action), traverser)
 
             ev = float(strategy @ values)
             regret_update = values - ev
-            
             weight = self._iteration_weight()
 
             if info_key not in self.regret_sum: self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
@@ -177,12 +176,21 @@ class CFRTrainer:
             action_idx = np.random.choice(len(actions), p=strategy)
             return self.cfr_traverse(self.game.apply_action(state, actions[action_idx]), traverser)
 
+    def reset_strategy_sum(self, seats: Optional[List[int]] = None):
+        """Clear average strategy for specific seats (or all)."""
+        if seats is None:
+            self.strategy_sum = {}
+        else:
+            seats_set = set(seats)
+            keys_to_del = [k for k in self.strategy_sum if k[0] in seats_set]
+            for k in keys_to_del:
+                del self.strategy_sum[k]
+
     def _team_value(self, payoffs, traverser):
         if not self.team_seats or traverser not in self.team_seats:
             return payoffs[traverser]
         team_payoffs = [payoffs[s] for s in self.team_seats]
-        if self.team_objective == "utilitarian": return sum(team_payoffs)
-        return payoffs[traverser]
+        return sum(team_payoffs) if self.team_objective == "utilitarian" else payoffs[traverser]
 
     def save(self, path):
         import pickle
@@ -195,13 +203,19 @@ class CFRTrainer:
         }
         with open(path, "wb") as f: pickle.dump(data, f)
 
-    def load(self, path):
+    def load(self, path, merge=False):
         import pickle
         with open(path, "rb") as f: data = pickle.load(f)
-        self.regret_sum = data["regret_sum"]
-        self.strategy_sum = data["strategy_sum"]
-        self.action_map = data["action_map"]
-        self.iteration = data["iteration"]
-        self.use_shared_info = data.get("use_shared_info", False)
-        self.team_seats = set(data.get("team_seats", []))
-        self.team_objective = data.get("team_objective", "utilitarian")
+        if not merge:
+            self.regret_sum = data["regret_sum"]
+            self.strategy_sum = data["strategy_sum"]
+            self.action_map = data["action_map"]
+            self.iteration = data["iteration"]
+            self.use_shared_info = data.get("use_shared_info", False)
+            self.team_seats = set(data.get("team_seats", []))
+            self.team_objective = data.get("team_objective", "utilitarian")
+        else:
+            self.regret_sum.update(data["regret_sum"])
+            self.strategy_sum.update(data["strategy_sum"])
+            self.action_map.update(data["action_map"])
+            self.iteration = max(self.iteration, data["iteration"])
