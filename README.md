@@ -102,7 +102,10 @@ python scripts/validate_team.py --frozen-strategy output/blueprint_claude_v3_321
 # LEDUC
 python scripts/train.py --iterations 100000 --shared-info --team-seats 0,1 --frozen-strategy output/leduc_baseline_100k.pkl --out output/leduc_comm_allowed.pkl
 
+python scripts/train.py --resume-from output/leduc_baseline_100k.pkl --iterations 1000000 --out output/leduc_baseline_1000k.pkl
 
+# For Matt: This command lets you fix the python env path
+$env:PYTHONPATH = "."
 ```
 
 ## Game Parameters (from formulation)

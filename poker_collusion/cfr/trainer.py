@@ -1,6 +1,7 @@
 """
 MCCFR trainer: modified to support Shared Information (psychic) collusion and Frozen Strategies.
-Fixed: Normalized avg_regret diagnostic and unbiased pruning logic.
+Step 1 (Resume): Updated train() to support starting from self.iteration + 1.
+Includes fixes for Normalization, Unbiased Pruning, and Traversal Restrictions.
 """
 
 from __future__ import annotations
@@ -53,7 +54,7 @@ class CFRTrainer:
     def _calculate_avg_regret(self) -> float:
         """
         Diagnostic to measure convergence.
-        Normalizes accumulated regrets by the sum of weights (Step 1).
+        Normalizes accumulated regrets by the sum of weights.
         """
         if not self.regret_sum or self.iteration == 0: 
             return 0.0
@@ -67,7 +68,7 @@ class CFRTrainer:
             if T <= C:
                 weight_sum = T * (T + 1) / 2
             else:
-                # Sum of 1..C + (T-C) iterations at weight C
+                # Sum of weights 1..C plus remaining iterations at weight C
                 weight_sum = (C * (C + 1) / 2) + (T - C) * C
         
         total_pos_avg_regret = 0.0
@@ -77,19 +78,24 @@ class CFRTrainer:
             actions = self.action_map.get(info_key, [])
             if not actions: 
                 continue
-            # Normalize accumulated positive regret to get true average regret
             pos_regret_sum = sum(max(regrets[a], 0) for a in actions)
             total_pos_avg_regret += (pos_regret_sum / weight_sum) / len(actions)
             count += 1
             
         return total_pos_avg_regret / count if count > 0 else 0.0
 
-    def train(self, num_iterations: int) -> None:
-        """Main MCCFR training loop."""
-        pbar = tqdm(range(1, num_iterations + 1), desc="Training MCCFR")
+    def train(self, target_iterations: int) -> None:
+        """Main MCCFR training loop. Resumes if self.iteration > 0 (Step 1)."""
+        start_iter = self.iteration + 1
+        if start_iter > target_iterations:
+            print(f"Trainer already at {self.iteration} iterations. No further training needed.")
+            return
+
+        pbar = tqdm(range(start_iter, target_iterations + 1), desc="Training MCCFR")
         for t in pbar:
             self.iteration = t
             
+            # Restrict traversal to team seats if a frozen opponent exists
             if self.frozen_trainer and self.team_seats:
                 traverser_seats = list(self.team_seats)
             else:
@@ -144,7 +150,7 @@ class CFRTrainer:
             regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
             
             for i, action in enumerate(actions):
-                # Step 2: Ensure unbiased pruning by only skipping if strategy[i] == 0
+                # Unbiased pruning: skip if strategy[i] == 0 and regret is below threshold
                 if (strategy[i] == 0 and 
                     self.iteration > self.prune_warm_up and 
                     regrets_full[action] < self.prune_threshold and 
@@ -159,10 +165,8 @@ class CFRTrainer:
             
             weight = self._iteration_weight()
 
-            if info_key not in self.regret_sum: 
-                self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
-            if info_key not in self.strategy_sum: 
-                self.strategy_sum[info_key] = np.zeros(NUM_ACTIONS)
+            if info_key not in self.regret_sum: self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
+            if info_key not in self.strategy_sum: self.strategy_sum[info_key] = np.zeros(NUM_ACTIONS)
             
             for i, a in enumerate(actions):
                 if not pruned[i]:
