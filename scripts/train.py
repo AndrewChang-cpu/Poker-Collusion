@@ -1,6 +1,22 @@
 """
 MCCFR training script.
-Step 5 & 6 (Phase 2): Added support for victim modeling, merged loading, and co-evolution.
+
+Usage:
+  python scripts/train.py --iterations 10000 --out output/blueprint.pkl
+
+  # Resume training to a target total
+  python scripts/train.py --resume-from output/leduc_1m.pkl --iterations 10000000 --out output/leduc_10m.pkl
+
+  # Plot a per-seat mbb/g learning curve (evaluated every 1M iterations, 100k hands each)
+  python scripts/train.py --iterations 10000000 --out output/leduc_10m.pkl --plot-every 1000000
+
+  # Team: observable signaling (team seats 0,1 vs frozen BB)
+  python scripts/train.py --team-seats 0,1 \
+      --frozen-strategy output/leduc_ne.pkl --iterations 500000 --out output/leduc_obs_signal.pkl
+
+  # Team: free communication (full info keys for team members)
+  python scripts/train.py --team-seats 0,1 --shared-info \
+      --frozen-strategy output/leduc_ne.pkl --iterations 500000 --out output/leduc_free_comm.pkl
 """
 import argparse
 import contextlib
@@ -8,11 +24,13 @@ import io
 import os
 import sys
 
+# Ensure the project root is in the path for internal imports
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from poker_collusion.cfr import CFRTrainer
+# Bypassing the package-level __init__ to avoid CFRDebugger/terminal_display dependency issues
+from poker_collusion.cfr.trainer import CFRTrainer
 from poker_collusion.env import (
     deal_new_hand, get_current_player, get_legal_actions,
     get_info_key, is_terminal, get_payoffs, apply_action,
@@ -24,6 +42,10 @@ from poker_collusion.config import NUM_PLAYERS
 
 
 class GameModule:
+    """
+    Comprehensive interface for the CFRTrainer to interact with the game environment.
+    Exposes core CFR methods and auxiliary environment logic.
+    """
     deal_new_hand      = staticmethod(deal_new_hand)
     get_current_player = staticmethod(get_current_player)
     get_legal_actions  = staticmethod(get_legal_actions)
@@ -48,6 +70,7 @@ def _eval_selfplay(game, trainer, num_hands):
 
 
 def _plot_curve(checkpoints, plot_out):
+    """Generate a learning curve plot if matplotlib is available."""
     try:
         import matplotlib.pyplot as plt
     except ImportError:
@@ -79,7 +102,7 @@ def main():
                         help="Target total number of iterations (e.g. 200000)")
     parser.add_argument("--out", "-o", default="output/blueprint.pkl")
     
-    # Phase 2: Resume from multiple checkpoints (e.g. victim baseline + psychic team)
+    # Support for victim modeling and resuming from multiple sources
     parser.add_argument("--resume-from", nargs="+", metavar="PATH",
                         help="One or more existing .pkl files to load/merge")
     
@@ -88,11 +111,9 @@ def main():
                         help="Full-comm: include teammate card rank in info key (team members only)")
     parser.add_argument("--team-objective", default="utilitarian")
     
-    # Phase 2: Specify which seats are actively updating regrets
     parser.add_argument("--train-seats", type=str, default=None,
                         help="Seats to train (traversers). Default: all. Example: '2' for victim only.")
     
-    # Phase 2: Reset strategy sum for co-evolution pivot
     parser.add_argument("--reset-strategy-sum", action="store_true",
                         help="Clear the accumulated average strategy (S) while keeping regrets (R)")
     
@@ -111,7 +132,7 @@ def main():
     train_seats = [int(s) for s in args.train_seats.split(",")] if args.train_seats else None
     game = GameModule()
 
-    # Initialize frozen strategy provider if specified
+    # Load frozen strategy for baseline opponents
     frozen_trainer = None
     if args.frozen_strategy:
         if os.path.exists(args.frozen_strategy):
@@ -121,7 +142,7 @@ def main():
         else:
             print(f"Warning: {args.frozen_strategy} not found. Proceeding without freezing.")
 
-    # Initialize trainer with Phase 2 configurations
+    # Initialize the main trainer
     trainer = CFRTrainer(
         game,
         num_players=NUM_PLAYERS,
@@ -132,11 +153,10 @@ def main():
         team_objective=args.team_objective,
     )
 
-    # Phase 2: Load and Merge checkpoints
+    # Resume from existing checkpoints, potentially merging multiple files
     if args.resume_from:
         for i, path in enumerate(args.resume_from):
             if os.path.exists(path):
-                # Use merge=True for all subsequent checkpoints after the first
                 is_merge = (i > 0)
                 print(f"Loading checkpoint from {path} (merge={is_merge})...")
                 trainer.load(path, merge=is_merge)
@@ -144,7 +164,7 @@ def main():
                 print(f"Error: {path} not found.")
                 sys.exit(1)
 
-    # Phase 2: Optional strategy reset
+    # Optionally reset strategy sum to allow pre-trained agents to pivot faster
     if args.reset_strategy_sum:
         print("Resetting accumulated strategy sum for all seats...")
         trainer.reset_strategy_sum()
