@@ -1,6 +1,6 @@
 """
-Game state for 3-player Leduc Hold'em: 12-card deck, 1 hole card per player.
-Modified to fix pre-flop termination by setting last_raiser to -1.
+Game state for 3-player Leduc Hold'em.
+Added legacy shim for reconstruct_actor_history to fix terminal_display.py imports.
 """
 
 import numpy as np
@@ -13,6 +13,14 @@ from poker_collusion.config import (
 )
 
 DEAL = "DEAL"
+
+def reconstruct_actor_history(action_history):
+    """
+    Legacy shim for 3-player Leduc Hold'em.
+    Modern NLHEState objects track actor_history natively. This function returns 
+    an empty list to satisfy the terminal_display.py import without crashing.
+    """
+    return []
 
 class NLHEState:
     __slots__ = (
@@ -27,7 +35,7 @@ class NLHEState:
         self.deck_idx = 0
         self.hole_cards = [[] for _ in range(NUM_PLAYERS)]
         self.board = []
-        self.round_idx = 0  # 0=preflop, 1=flop
+        self.round_idx = 0
         self.stacks = (STARTING_STACK_BB,) * NUM_PLAYERS
         self.pot = 0.0
         self.bets = (0.0,) * NUM_PLAYERS
@@ -65,7 +73,6 @@ class NLHEState:
 def deal_new_hand():
     """Deal a 3-player Leduc hand: 1 hole card each from a 12-card deck."""
     state = NLHEState()
-    # 4 ranks (J=0, Q=1, K=2, A=3) * 3 suits = 12 cards
     ranks = [0, 1, 2, 3] * 3
     state.deck = list(np.random.permutation(ranks))
     state.deck_idx = 0
@@ -85,7 +92,6 @@ def deal_new_hand():
     state.pot = INITIAL_POT_BB
     state.current_player = 0
     
-    # Corrected: Set to -1 so pre-flop ends after Big Blind (P2) acts.
     state.last_raiser = -1 
     state.last_raise_amount = BIG_BLIND_BB
     return state

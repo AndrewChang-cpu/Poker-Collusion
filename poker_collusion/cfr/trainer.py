@@ -1,12 +1,10 @@
 """
 MCCFR trainer: modified to support Shared Information (psychic) collusion and Frozen Strategies.
-Step 1: Added MCCFR Pruning logic to skip suboptimal paths.
-Step 2: Restricted traversal to team seats to prevent frozen opponent drift.
-Step 3: Expanded metadata persistence to include team_objective.
-Step 4: Refactored helpers for unit test compatibility.
+Fixed: Normalized avg_regret diagnostic and unbiased pruning logic.
 """
 
 from __future__ import annotations
+from typing import Any
 import os
 import numpy as np
 from tqdm import tqdm
@@ -43,7 +41,6 @@ class CFRTrainer:
         self.iteration = 0
         self.linear_cfr_cutoff = LINEAR_CFR_CUTOFF
         self.use_linear_cfr = kwargs.get("use_linear_cfr", True)
-        # Internalize pruning for tests
         self.prune_threshold = kwargs.get("prune_threshold", PRUNE_THRESHOLD)
         self.prune_warm_up = kwargs.get("prune_warm_up", PRUNE_WARM_UP_ITERATIONS)
 
@@ -53,23 +50,46 @@ class CFRTrainer:
             return 1.0
         return float(min(self.iteration, self.linear_cfr_cutoff))
 
-    def _should_prune(self, info_key: Any, action: int) -> bool:
-        """Check if an action path should be skipped (Step 1)."""
-        if self.prune_threshold is None or self.iteration <= self.prune_warm_up:
-            return False
+    def _calculate_avg_regret(self) -> float:
+        """
+        Diagnostic to measure convergence.
+        Normalizes accumulated regrets by the sum of weights (Step 1).
+        """
+        if not self.regret_sum or self.iteration == 0: 
+            return 0.0
         
-        regrets = self.regret_sum.get(info_key)
-        if regrets is not None and regrets[action] < self.prune_threshold:
-            return np.random.random() < PRUNE_SKIP_PROBABILITY
-        return False
+        # Calculate mathematical sum of weights for the current progress
+        if not self.use_linear_cfr:
+            weight_sum = float(self.iteration)
+        else:
+            C = self.linear_cfr_cutoff
+            T = self.iteration
+            if T <= C:
+                weight_sum = T * (T + 1) / 2
+            else:
+                # Sum of 1..C + (T-C) iterations at weight C
+                weight_sum = (C * (C + 1) / 2) + (T - C) * C
+        
+        total_pos_avg_regret = 0.0
+        count = 0
+        for info_key in self.regret_sum:
+            regrets = self.regret_sum[info_key]
+            actions = self.action_map.get(info_key, [])
+            if not actions: 
+                continue
+            # Normalize accumulated positive regret to get true average regret
+            pos_regret_sum = sum(max(regrets[a], 0) for a in actions)
+            total_pos_avg_regret += (pos_regret_sum / weight_sum) / len(actions)
+            count += 1
+            
+        return total_pos_avg_regret / count if count > 0 else 0.0
 
     def train(self, num_iterations: int) -> None:
-        """Main MCCFR training loop (Step 2)."""
+        """Main MCCFR training loop."""
         pbar = tqdm(range(1, num_iterations + 1), desc="Training MCCFR")
         for t in pbar:
             self.iteration = t
             
-            # Step 2: Traverse only team seats if frozen opponent exists.
             if self.frozen_trainer and self.team_seats:
                 traverser_seats = list(self.team_seats)
             else:
@@ -81,21 +101,7 @@ class CFRTrainer:
             
             if t % LOG_INTERVAL == 0:
                 avg_regret = self._calculate_avg_regret()
-                pbar.set_postfix({"avg_regret": f"{avg_regret:.4f}"})
-
-    def _calculate_avg_regret(self) -> float:
-        """Diagnostic to measure convergence."""
-        if not self.regret_sum: return 0.0
-        total_pos_regret = 0.0
-        count = 0
-        for info_key in self.regret_sum:
-            regrets = self.regret_sum[info_key]
-            actions = self.action_map.get(info_key, [])
-            if not actions: continue
-            pos_regret = sum(max(regrets[a], 0) for a in actions)
-            total_pos_regret += pos_regret / len(actions)
-            count += 1
-        return total_pos_regret / count if count > 0 else 0.0
+                pbar.set_postfix({"avg_regret": f"{avg_regret:.6f}"})
 
     def get_average_strategy(self, info_key, legal_actions):
         strat_sum = self.strategy_sum.get(info_key)
@@ -127,7 +133,6 @@ class CFRTrainer:
         if info_key not in self.action_map:
             self.action_map[info_key] = list(actions)
 
-        # Strategy lookup: use frozen opponent strategy if applicable
         strategy = self.get_strategy(info_key, actions)
         if self.frozen_trainer and player not in self.team_seats:
             strategy = self.frozen_trainer.get_average_strategy(info_key, actions)
@@ -136,9 +141,14 @@ class CFRTrainer:
             values = np.zeros(len(actions))
             pruned = [False] * len(actions)
             
+            regrets_full = self.regret_sum.get(info_key, np.zeros(NUM_ACTIONS))
+            
             for i, action in enumerate(actions):
-                # Step 1: MCCFR Pruning logic helper
-                if self._should_prune(info_key, action):
+                # Step 2: Ensure unbiased pruning by only skipping if strategy[i] == 0
+                if (strategy[i] == 0 and 
+                    self.iteration > self.prune_warm_up and 
+                    regrets_full[action] < self.prune_threshold and 
+                    np.random.random() < PRUNE_SKIP_PROBABILITY):
                     pruned[i] = True
                     continue
 
@@ -149,8 +159,10 @@ class CFRTrainer:
             
             weight = self._iteration_weight()
 
-            if info_key not in self.regret_sum: self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
-            if info_key not in self.strategy_sum: self.strategy_sum[info_key] = np.zeros(NUM_ACTIONS)
+            if info_key not in self.regret_sum: 
+                self.regret_sum[info_key] = np.zeros(NUM_ACTIONS)
+            if info_key not in self.strategy_sum: 
+                self.strategy_sum[info_key] = np.zeros(NUM_ACTIONS)
             
             for i, a in enumerate(actions):
                 if not pruned[i]:
