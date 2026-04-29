@@ -110,7 +110,7 @@ class CFRTrainer:
             
             if t % LOG_INTERVAL == 0:
                 avg_regret = self._calculate_avg_regret()
-                pbar.set_postfix({"avg_regret": f"{avg_regret:.6f}"})
+                pbar.set_postfix({"avg_regret (μR)": f"{avg_regret*1000000:.6f}"})
 
     def get_average_strategy(self, info_key, legal_actions):
         strat_sum = self.strategy_sum.get(info_key)
