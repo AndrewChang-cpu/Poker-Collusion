@@ -209,3 +209,17 @@ def main() -> None:
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
     main()
+
+
+
+"""
+baseline (self play)
+BTN    blueprint_v4_15000.pkl       200        148.2        [428.5, 1009.5]
+SB     blueprint_v4_15000.pkl       -200         211.2        [-386.2, 441.8]
+BB     blueprint_v4_15000.pkl       0       156.9        [-1054.3, -439.3]
+
+team
+BTN    blueprint_v4_15000.pkl       200        148.2        [428.5, 1009.5]
+SB     blueprint_v4_15000.pkl       100         211.2        [-386.2, 441.8]
+BB     blueprint_v4_15000.pkl       -300       156.9        [-1054.3, -439.3]
+"""
