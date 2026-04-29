@@ -36,30 +36,30 @@ python3 scripts/evaluate.py --strategies models/leduc_baseline_4000k.pkl models/
 
 # ── Experiment 2: Observable signaling — train all 3 from scratch ───────────────────
 
-python3 scripts/train.py --team-seats 0,1 --frozen-strategy models/leduc_baseline_4000k.pkl --iterations 5000000 --out outputv2/leduc_obs_signal_01_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_obs_signal_01.log
-python3 scripts/train.py --team-seats 0,2 --frozen-strategy models/leduc_baseline_4000k.pkl --iterations 5000000 --out outputv2/leduc_obs_signal_02_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_obs_signal_02.log
-python3 scripts/train.py --team-seats 1,2 --frozen-strategy models/leduc_baseline_4000k.pkl --iterations 5000000 --out outputv2/leduc_obs_signal_12_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_obs_signal_12.log
+python3 scripts/train.py --team-seats 0,1 --frozen-strategy models/leduc_baseline_5000k.pkl --iterations 5000000 --out outputv2/leduc_obs_signal_01_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_obs_signal_01.log
+python3 scripts/train.py --team-seats 0,2 --frozen-strategy models/leduc_baseline_5000k.pkl --iterations 5000000 --out outputv2/leduc_obs_signal_02_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_obs_signal_02.log
+python3 scripts/train.py --team-seats 1,2 --frozen-strategy models/leduc_baseline_5000k.pkl --iterations 5000000 --out outputv2/leduc_obs_signal_12_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_obs_signal_12.log
 
 # Exp 2 evals
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_obs_signal_01_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_obs_signal_01.log
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_obs_signal_02_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_obs_signal_02.log
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_obs_signal_12_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_obs_signal_12.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_obs_signal_01_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_obs_signal_01.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_obs_signal_02_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_obs_signal_02.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_obs_signal_12_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_obs_signal_12.log
 
 # ── Experiment 3 & 4: CTDE — train all 3 from scratch ───────────────────────────────
 
-python3 scripts/train.py --team-seats 0,1 --shared-info --frozen-strategy models/leduc_baseline_4000k.pkl --iterations 5000000 --out outputv2/leduc_ctde_01_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_ctde_01.log
-python3 scripts/train.py --team-seats 0,2 --shared-info --frozen-strategy models/leduc_baseline_4000k.pkl --iterations 5000000 --out outputv2/leduc_ctde_02_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_ctde_02.log
-python3 scripts/train.py --team-seats 1,2 --shared-info --frozen-strategy models/leduc_baseline_4000k.pkl --iterations 5000000 --out outputv2/leduc_ctde_12_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_ctde_12.log
+python3 scripts/train.py --team-seats 0,1 --shared-info --frozen-strategy models/leduc_baseline_5000k.pkl --iterations 5000000 --out outputv2/leduc_ctde_01_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_ctde_01.log
+python3 scripts/train.py --team-seats 0,2 --shared-info --frozen-strategy models/leduc_baseline_5000k.pkl --iterations 5000000 --out outputv2/leduc_ctde_02_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_ctde_02.log
+python3 scripts/train.py --team-seats 1,2 --shared-info --frozen-strategy models/leduc_baseline_5000k.pkl --iterations 5000000 --out outputv2/leduc_ctde_12_1m.pkl --plot-every 50000 2>&1 | tee outputv2/logs/train_ctde_12.log
 
 # Exp 3 evals: CTDE = decentralized execution (--no-shared-info at eval)
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_01_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --no-shared-info --hands 100000 2>&1 | tee outputv2/logs/eval_ctde_01.log
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_02_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --no-shared-info --hands 100000 2>&1 | tee outputv2/logs/eval_ctde_02.log
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_12_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --no-shared-info --hands 100000 2>&1 | tee outputv2/logs/eval_ctde_12.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_01_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --no-shared-info --hands 100000 2>&1 | tee outputv2/logs/eval_ctde_01.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_02_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --no-shared-info --hands 100000 2>&1 | tee outputv2/logs/eval_ctde_02.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_12_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --no-shared-info --hands 100000 2>&1 | tee outputv2/logs/eval_ctde_12.log
 
 # Exp 4 evals: Free communication = same models, shared info honored at eval
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_01_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_freecomm_01.log
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_02_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_freecomm_02.log
-python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_12_1m.pkl --frozen-strategy models/leduc_baseline_4000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_freecomm_12.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_01_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_freecomm_01.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_02_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_freecomm_02.log
+python3 scripts/evaluate.py --team-eval --team-strategy outputv2/leduc_ctde_12_1m.pkl --frozen-strategy models/leduc_baseline_5000k.pkl --hands 100000 2>&1 | tee outputv2/logs/eval_freecomm_12.log
 
 # ── Experiment 5: Coevolution from scratch (outputs team + victim + curve txt) ──────
 
