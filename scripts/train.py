@@ -253,6 +253,7 @@ def main():
 
     # ── Standard training loop ───────────────────────────────────────────────
     checkpoints = []
+    checkpoints_ctde = []  # populated only when --shared-info is set
 
     if args.plot_every > 0:
         current = trainer.iteration
@@ -260,6 +261,7 @@ def main():
             next_target = min(current + args.plot_every, args.iterations)
             trainer.train(target_iterations=next_target)
             current = trainer.iteration
+
             # Use frozen_trainer for non-team seats so the curve reflects
             # team performance against the actual frozen opponent, not self-play.
             if frozen_trainer is not None and trainer.team_seats:
@@ -271,7 +273,22 @@ def main():
             else:
                 btn, sb, bb = _eval_selfplay(game, trainer, args.eval_hands)
             checkpoints.append((current, btn, sb, bb))
-            print(f"  iter {current:>10,}  BTN {btn:+.1f}  SB {sb:+.1f}  BB {bb:+.1f}")
+            print(f"  iter {current:>10,}  BTN {btn:+.1f}  SB {sb:+.1f}  BB {bb:+.1f}  [free_comm]")
+
+            # When trained with shared info, also evaluate in CTDE mode (no shared info at inference)
+            if args.shared_info:
+                trainer.use_shared_info = False
+                if frozen_trainer is not None and trainer.team_seats:
+                    policies = [
+                        trainer if s in trainer.team_seats else frozen_trainer
+                        for s in range(NUM_PLAYERS)
+                    ]
+                    btn_c, sb_c, bb_c = _eval_selfplay_policies(game, policies, args.eval_hands)
+                else:
+                    btn_c, sb_c, bb_c = _eval_selfplay(game, trainer, args.eval_hands)
+                trainer.use_shared_info = True
+                checkpoints_ctde.append((current, btn_c, sb_c, bb_c))
+                print(f"  iter {current:>10,}  BTN {btn_c:+.1f}  SB {sb_c:+.1f}  BB {bb_c:+.1f}  [ctde]")
     else:
         trainer.train(target_iterations=args.iterations)
 
@@ -282,6 +299,11 @@ def main():
         plot_out = args.plot_out or os.path.splitext(args.out)[0] + "_curve.png"
         _plot_curve(checkpoints, plot_out)
         _save_curve_data(checkpoints, os.path.splitext(plot_out)[0] + ".txt")
+
+    if checkpoints_ctde:
+        ctde_plot_out = os.path.splitext(plot_out)[0] + "_ctde.png"
+        _plot_curve(checkpoints_ctde, ctde_plot_out)
+        _save_curve_data(checkpoints_ctde, os.path.splitext(ctde_plot_out)[0] + ".txt")
 
 
 if __name__ == "__main__":
