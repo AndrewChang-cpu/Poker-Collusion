@@ -83,7 +83,7 @@ python scripts/eval_curve.py output/blueprint_claude_v3_1800.pkl output/blueprin
 
 # 5. Team MCCFR (collusion training)
 # Train seats 0,1 as a team against a frozen opponent blueprint at seat 2
-python3t scripts/train.py --log-interval 1 --out output/blueprint_v4.pkl \
+python3 scripts/train.py --log-interval 1 --out output/blueprint_v4.pkl \
     --checkpoint-every 100 --workers 8 --batch-size 24 \
     --team-seats 0,1 --frozen-strategy output/blueprint_claude_v3_32100.pkl \
     --team-objective utilitarian
