@@ -36,16 +36,19 @@ class Strategy:
         return cls(strategy_sum=data.get("strategy_sum", {}), action_map=data.get("action_map", {}))
 
     def get_action_probabilities(self, info_key, legal_actions):
-        # Fix: Convert to tuple to ensure hashability
         if isinstance(info_key, list):
             info_key = tuple(info_key)
-            
+
         if info_key not in self.strategy_sum:
             return np.ones(len(legal_actions)) / len(legal_actions)
 
         s = self.strategy_sum[info_key]
         s_sub = np.array([s[a] if a < len(s) else 0.0 for a in legal_actions])
         return get_average_strategy(s_sub, len(legal_actions))
+
+    def get_average_strategy(self, info_key, legal_actions):
+        """Alias for get_action_probabilities (matches CFRTrainer interface)."""
+        return self.get_action_probabilities(info_key, legal_actions)
 
     def sample_action(self, info_key, legal_actions):
         probs = self.get_action_probabilities(info_key, legal_actions)

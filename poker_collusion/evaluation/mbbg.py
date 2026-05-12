@@ -1,5 +1,6 @@
 """
 Self-play evaluation: mbb/g and block bootstrap standard error.
+Standardized Policy Interfaces (Step 3).
 """
 
 from __future__ import annotations
@@ -30,17 +31,33 @@ Policy = Union[_SupportsAverageStrategy, _SupportsActionProbs, AmateurPolicy]
 
 
 def _get_policy_probs(
-    game: CFRGame, state: Any, player: int, actions: List[int], policy: Policy
+    game: CFRGame, 
+    state: Any, 
+    player: int, 
+    actions: List[int], 
+    policy: Policy,
+    team_seats: Optional[List[int]] = None
 ) -> np.ndarray:
     """Return probability distribution over actions from trainer or amateur policy."""
+    
+    # 1. Check for CFR Strategy Interface
     if hasattr(policy, "get_average_strategy"):
-        info_key = game.get_info_key(state, player)
+        info_key = game.get_info_key(state, player, team_seats=team_seats)
         probs = policy.get_average_strategy(info_key, actions)
-        if probs is None or len(probs) != len(actions):
-            probs = np.ones(len(actions)) / len(actions)
-    else:
-        probs = policy.get_action_probs(state, player, actions)
-    return probs
+        if probs is not None:
+            if len(probs) != len(actions):
+                raise ValueError(f"Strategy returned {len(probs)} probabilities, but {len(actions)} actions are legal.")
+            return probs
+            
+    # 2. Check for Amateur Policy Interface
+    if hasattr(policy, "get_action_probs"):
+        return policy.get_action_probs(state, player, actions)
+
+    # 3. Standardize Policy Interface (Step 3): Fail explicitly on invalid policy types
+    raise TypeError(
+        f"Invalid policy object for player {player}: {type(policy)}. "
+        "Policy must support 'get_average_strategy' (CFR) or 'get_action_probs' (Amateur)."
+    )
 
 
 def play_hand_with_policies(
@@ -60,8 +77,15 @@ def play_hand_with_policies(
         actions = game.get_legal_actions(state)
         if not actions:
             break
+        
         policy = policies[player]
-        probs = _get_policy_probs(game, state, player, actions, policy)
+        
+        # Psychic support: extract team context if the policy is a trainer with shared info enabled
+        team_seats = None
+        if hasattr(policy, "use_shared_info") and getattr(policy, "use_shared_info"):
+            team_seats = list(getattr(policy, "team_seats", []))
+            
+        probs = _get_policy_probs(game, state, player, actions, policy, team_seats=team_seats)
         action_idx = np.random.choice(len(actions), p=probs)
         state = game.apply_action(state, actions[action_idx])
     return game.get_payoffs(state)
@@ -150,6 +174,30 @@ def evaluate_strategies(
         )
 
     return mbb_mean, mbb_se
+
+
+def summarize_team(
+    mbb_mean: np.ndarray,
+    mbb_se: np.ndarray,
+    team_seats: List[int],
+    seat_labels: Tuple[str, ...] = ("BTN", "SB", "BB"),
+) -> None:
+    """Print team aggregate and solo opponent mbb/g from per-seat arrays."""
+    frozen_seats = [s for s in range(len(mbb_mean)) if s not in team_seats]
+
+    team_mbb = sum(mbb_mean[s] for s in team_seats)
+    
+    if len(frozen_seats) == 1:
+        team_se = mbb_se[frozen_seats[0]]
+    else:
+        team_se = (sum(mbb_se[s] ** 2 for s in team_seats)) ** 0.5
+        
+    team_labels = "+".join(seat_labels[s] for s in team_seats)
+
+    print(f"\n{'— Team summary —':^60}")
+    print(f"  Team ({team_labels}):  mbb/g = {team_mbb:.1f} ± {team_se:.1f}")
+    for s in frozen_seats:
+        print(f"  Solo ({seat_labels[s]}):       mbb/g = {mbb_mean[s]:.1f} ± {mbb_se[s]:.1f}")
 
 
 def evaluate_with_variance(

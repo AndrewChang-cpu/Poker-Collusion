@@ -63,7 +63,8 @@ def get_legal_action_indices(state):
         for i, total_bb in enumerate(PREFLOP_RAISE_BB):
             if total_bb < min_raise_total:
                 continue
-            if total_bb > stack:
+            # FIX (Step 1): Compare absolute raise size to total wealth on the street
+            if total_bb > (stack + state.bets[p]):
                 break
             if total_bb in seen_totals:
                 continue
@@ -77,23 +78,22 @@ def get_legal_action_indices(state):
         max_bet = _max_bet(state)
         min_raise_total = _min_raise_total(state) if max_bet > 0 else 0
         seen_totals = set()
+        max_affordable = state.bets[p] + stack
         for i, mult in enumerate(POSTFLOP_POT_MULT):
             bet_amount = pot * mult
-            total_bet = to_call + bet_amount
+            total_bet = state.bets[p] + to_call + bet_amount
             if max_bet > 0 and total_bet < min_raise_total:
                 continue
-            if total_bet > stack:
+            if total_bet > max_affordable:
                 continue
             if total_bet in seen_totals:
                 continue
             seen_totals.add(total_bet)
             legal.append(2 + i)
         if stack > 0:
-            all_in_total = stack
+            all_in_total = state.bets[p] + stack
             if all_in_total >= min_raise_total or to_call > 0:
                 if all_in_total not in seen_totals:
-                    legal.append(9)
-                else:
                     legal.append(9)
 
     return sorted(legal)
@@ -127,8 +127,9 @@ def action_index_to_chips(state, action_index):
         pot = _pot_for_acting(state)
         mult = POSTFLOP_POT_MULT[action_index - 2]
         bet_amount = pot * mult
-        total_bet = to_call + bet_amount
-        total_bet = min(total_bet, stack)
+        max_affordable = state.bets[p] + stack
+        total_bet = state.bets[p] + to_call + bet_amount
+        total_bet = min(total_bet, max_affordable)
         return False, total_bet
 
 def get_action_description(state, action_index):
@@ -150,4 +151,5 @@ def get_action_description(state, action_index):
     else:
         mult = POSTFLOP_POT_MULT[action_index - 2]
         pot = _pot_for_acting(state)
-        return f"Bet {int(mult*100)}% pot (to {to_call + mult*pot:.1f} BB total)"
+        raise_to = state.bets[p] + to_call + mult * pot
+        return f"Bet {int(mult*100)}% pot (to {raise_to:.1f} BB total)"
