@@ -31,3 +31,10 @@ def test_actor_obs_ignores_hidden_cards():
 
 def test_illegal_action_raises():
     assert probes.illegal_action({"seed": 2}) == {"raised": True, "state_changed": False, "tried": 2}
+
+
+def test_decentralized_policy_uses_current_key_format():
+    out = probes.decentralized_policy({"hands": 100, "seed": 3})
+    assert out["errors"] == 0, out["first_error"]
+    assert out["true_key_queried_frac"] == 1.0
+    assert out["output_max_diff"] == 0.0

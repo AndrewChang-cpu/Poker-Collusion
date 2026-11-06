@@ -1,0 +1,40 @@
+{
+ "cases": [
+  {
+   "id": "decentralized-policy-key-contract",
+   "title": "CTDE deployment wrapper reads trained full-comm keys and ignores the teammate's real card",
+   "requirement_id": "actor-observations-reveal-no-other-seat-s-hole-card-or-undealt-",
+   "input": {
+    "probe": "decentralized_policy",
+    "hands": 300,
+    "seed": 0
+   },
+   "assertions": [
+    {
+     "path": "errors",
+     "operator": "eq",
+     "expected": 0
+    },
+    {
+     "path": "true_key_queried_frac",
+     "operator": "eq",
+     "expected": 1
+    },
+    {
+     "path": "output_max_diff",
+     "operator": "eq",
+     "expected": 0
+    },
+    {
+     "path": "decisions",
+     "operator": "gte",
+     "expected": 500
+    }
+   ],
+   "provenance": {
+    "kind": "imported",
+    "source": "Regression for BUG-6 (--decentralized crash on current info-key format)"
+   }
+  }
+ ]
+}

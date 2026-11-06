@@ -13,11 +13,13 @@
 `utilitarian`; the implementations from 43ee465 had been dropped. Caught by the
 TouchStone case `cfr-maxmin-team-reward` (reward 3.0, expected -1.0).
 
-### BUG-6: `--decentralized` evaluation crashes
-`evaluation/team_policy.py` unpacks a 4-field key `(round, my_rank,
-community_rank, history)`; `info_set.get_info_key` returns `(round, bucket,
-history)`, so `get_average_strategy` raises `ValueError`. The psychic key
-format it rebuilds is also outdated. Not fixed.
+### BUG-6: `--decentralized` evaluation crashed (fixed on this branch)
+`evaluation/team_policy.py` unpacked a 4-field key `(round, my_rank,
+community_rank, history)` and rebuilt full-comm keys in an older format;
+`info_set.get_info_key` returns `(round, bucket, history)`, so every team
+decision raised `ValueError`. Now parses the current standard key and rebuilds
+the current psychic key. Regression: TouchStone case
+`decentralized-policy-key-contract` and `tests/test_rl_env.py`.
 
 ### BUG-7: frozen MCCFR opponent plays uniform random at unseen infosets
 `CFRTrainer.get_average_strategy` returns uniform for keys NE self-play never

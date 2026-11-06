@@ -224,7 +224,55 @@ def checkpoint_replay(inp: Dict) -> Dict:
             "weakest_card_continue_rate": weakest_continue / max(1, weakest_vs_mate_shove)}
 
 
-PROBES = {f.__name__: f for f in (obs_counterfactual, conservation, team_reward,
+def decentralized_policy(inp: Dict) -> Dict:
+    """CTDE deployment wrapper (evaluation/team_policy.py): key contract and hidden-card invariance."""
+    from poker_collusion.evaluation.team_policy import CentralizedToDecentralizedPolicy
+    rng = np.random.default_rng(inp.get("seed", 0))
+    np.random.seed(inp.get("seed", 0))
+    team = list(inp.get("team_seats", [0, 1]))
+
+    class Recorder:  # stands in for a full-comm CFRTrainer; strategy depends on the queried key
+        def __init__(self):
+            self.queried = set()
+
+        def get_average_strategy(self, key, legal):
+            self.queried.add(key)
+            w = np.array([1.0 + (hash((key, a)) % 7) for a in legal])
+            return w / w.sum()
+
+    out = {"decisions": 0, "errors": 0, "first_error": None, "true_key_queried": 0, "output_max_diff": 0.0}
+    for _ in range(inp.get("hands", 300)):
+        s = deal_new_hand()
+        while not s.done:
+            if s.chance_pending:
+                s = g.sample_chance(s)
+                continue
+            p, legal = s.current_player, g.get_legal_actions(s)
+            if p in team:
+                out["decisions"] += 1
+                rec = Recorder()
+                pol = CentralizedToDecentralizedPolicy(rec, p)
+                try:
+                    a = pol.get_average_strategy(get_info_key(s, p), legal)
+                    cf = _counterfactual(s, p, rng)
+                    b = pol.get_average_strategy(get_info_key(cf, p), legal)
+                    out["output_max_diff"] = max(out["output_max_diff"], float(np.abs(a - b).max()))
+                    out["true_key_queried"] += _plain_key(get_info_key(s, p, team_seats=team)) in {
+                        _plain_key(k) for k in rec.queried}
+                except Exception as e:  # noqa: BLE001 - recorded as an observation
+                    out["errors"] += 1
+                    out["first_error"] = out["first_error"] or f"{type(e).__name__}: {e}"
+            s = g.apply_action(s, legal[int(np.random.randint(len(legal)))])
+    out["true_key_queried_frac"] = out["true_key_queried"] / max(1, out["decisions"])
+    return out
+
+
+def _plain_key(k):
+    from poker_collusion.rl.frozen import _plain
+    return _plain(k)
+
+
+PROBES = {f.__name__: f for f in (decentralized_policy, obs_counterfactual, conservation, team_reward,
                                     terminal_delivery, illegal_action, checkpoint_replay)}
 
 

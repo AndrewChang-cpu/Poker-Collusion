@@ -20,6 +20,8 @@ Case input = {"probe": NAME, ...}; observations are the probe's return dict
   fold_to_teammate_raise, learner_decisions,
   weakest_card_facing_teammate_shove, weakest_card_continue_rate (chip-dump
   signature: continuing preflop with the weakest card after a teammate shove).
+- decentralized_policy {hands, seed}: CTDE deployment wrapper -> errors,
+  first_error, true_key_queried_frac, output_max_diff (teammate card resampled).
 Every observation also carries code_version (git describe --dirty).
 """
 
