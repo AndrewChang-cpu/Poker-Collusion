@@ -17,9 +17,14 @@
      "expected": 1e-09
     },
     {
-     "path": "opp_miss_rate",
+     "path": "ev_share_from_fallback_hands",
      "operator": "lte",
-     "expected": 0.01
+     "expected": 0.1
+    },
+    {
+     "path": "opp_fallback",
+     "operator": "eq",
+     "expected": "context"
     },
     {
      "path": "opp_lookups",
@@ -29,7 +34,7 @@
    ],
    "provenance": {
     "kind": "imported",
-    "source": "Owner-authored after checkpoint 100 inspection"
+    "source": "Owner-authored; edited after checkpoint 300 drew 40% of team EV from opponent-fallback hands"
    }
   },
   {

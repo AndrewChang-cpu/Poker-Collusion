@@ -1,5 +1,37 @@
 # Backlog
 
+> **Scope note (2026-11-06, touchstone-rl-trial):** BUG-1..4, PERF-1..3 and
+> QUALITY-1/3/5 describe `poker_collusion_nlhe/` (mutable undo-stack engine).
+> The Leduc engine in `poker_collusion/` copies state per action and computes
+> `last_raise_amount` correctly; 200k random-play hands and the TouchStone
+> suite (`touchstone_suite/`) found no conservation or termination failures.
+
+## Found during the RL field trial (2026-11-06)
+
+### BUG-5: `--team-objective maxmin|smooth|risk` silently trained individual payoff (fixed on this branch)
+`CFRTrainer._team_value` returned `payoffs[traverser]` for every objective but
+`utilitarian`; the implementations from 43ee465 had been dropped. Caught by the
+TouchStone case `cfr-maxmin-team-reward` (reward 3.0, expected -1.0).
+
+### BUG-6: `--decentralized` evaluation crashes
+`evaluation/team_policy.py` unpacks a 4-field key `(round, my_rank,
+community_rank, history)`; `info_set.get_info_key` returns `(round, bucket,
+history)`, so `get_average_strategy` raises `ValueError`. The psychic key
+format it rebuilds is also outdated. Not fixed.
+
+### BUG-7: frozen MCCFR opponent plays uniform random at unseen infosets
+`CFRTrainer.get_average_strategy` returns uniform for keys NE self-play never
+reached. A PPO team found those lines on its own: at checkpoint 300, 7% of hands
+hit a fallback and supplied 40% of team EV. `poker_collusion/rl/frozen.py`
+now uses a card-aware fallback; the CFR evaluation path still uses uniform, so
+team-vs-frozen numbers in `outputv2/` may include the same effect.
+
+### TEST-1: `test_real_game_training_deterministic_with_np_seed_only` fails
+Calls `CFRTrainer.train(num_iterations=..., log_interval=...)`; the signature is
+`train(target_iterations)`. Pre-existing on main.
+
+---
+
 Prioritized by impact on training correctness, then performance, then maintainability.
 
 ---
