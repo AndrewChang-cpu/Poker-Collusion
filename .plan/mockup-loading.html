@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Bot — Loading</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D0F14;
+    --surface: #161A23;
+    --border: #252A35;
+    --gold: #E8C547;
+    --gold-dim: #8A7020;
+    --blue: #4A9EFF;
+    --text: #E0E4EF;
+    --text-dim: #5A6070;
+    --red: #E84747;
+    --green: #47E87A;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh; display: flex; flex-direction: column; }
+
+  header { border-bottom: 1px solid var(--border); padding: 14px 32px;
+    display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--gold); }
+  .header-right { display: flex; align-items: center; gap: 24px; }
+  .bankroll-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .bankroll-val { font-size: 16px; color: var(--text-dim); }
+  .mode-select { background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 6px 12px;
+    cursor: not-allowed; opacity: 0.5; }
+
+  main { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+  .loading-box { border: 1px solid var(--border); background: var(--surface);
+    padding: 48px 64px; text-align: center; min-width: 380px; }
+  .loading-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px;
+    letter-spacing: 4px; color: var(--text); margin-bottom: 8px; }
+  .loading-sub { font-size: 12px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 40px; }
+
+  .progress-track { background: var(--border); height: 2px; width: 100%; margin-bottom: 16px; }
+  .progress-fill { background: var(--gold); height: 100%; width: 60%;
+    animation: pulse-progress 1.4s ease-in-out infinite alternate; }
+  @keyframes pulse-progress {
+    from { width: 30%; opacity: 0.6; }
+    to { width: 80%; opacity: 1; }
+  }
+  .progress-text { font-size: 11px; color: var(--gold); letter-spacing: 2px;
+    animation: blink 1.2s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+
+  .dots { margin-top: 32px; display: flex; gap: 8px; justify-content: center; }
+  .dot { width: 6px; height: 6px; background: var(--border); border-radius: 50%; }
+  .dot:nth-child(1) { animation: dot-pulse 1.2s 0s ease-in-out infinite; }
+  .dot:nth-child(2) { animation: dot-pulse 1.2s 0.2s ease-in-out infinite; }
+  .dot:nth-child(3) { animation: dot-pulse 1.2s 0.4s ease-in-out infinite; }
+  @keyframes dot-pulse {
+    0%, 100% { background: var(--border); }
+    50% { background: var(--gold); }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">POKER BOT</div>
+    <div class="header-right">
+      <div>
+        <div class="bankroll-label">Bankroll</div>
+        <div class="bankroll-val">— BB</div>
+      </div>
+      <select class="mode-select" disabled>
+        <option>Leduc (Baseline)</option>
+      </select>
+    </div>
+  </header>
+
+  <main>
+    <div class="loading-box">
+      <div class="loading-title">POKER BOT</div>
+      <div class="loading-sub">Connecting to server</div>
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="progress-text">LOADING MODELS...</div>
+      <div class="dots">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

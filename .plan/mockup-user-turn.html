@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Bot — User Turn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D0F14; --surface: #161A23; --surface2: #1C2130;
+    --border: #252A35; --gold: #E8C547; --gold-dim: #8A7020;
+    --blue: #4A9EFF; --text: #E0E4EF; --text-dim: #5A6070; --red: #E84747;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh; display: flex; flex-direction: column; }
+
+  header { border-bottom: 1px solid var(--border); padding: 12px 32px;
+    display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--gold); }
+  .header-right { display: flex; align-items: center; gap: 28px; }
+  .bankroll-group { text-align: right; }
+  .bankroll-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .bankroll-val { font-size: 18px; color: var(--green, #47E87A); }
+  .bankroll-val.neg { color: var(--red); }
+  select { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 6px 12px; }
+
+  .game-layout { flex: 1; display: grid;
+    grid-template-rows: auto 1fr auto auto auto;
+    grid-template-areas: "bots" "center" "you" "actions" "log";
+    padding: 20px 32px; gap: 14px; max-width: 800px; margin: 0 auto; width: 100%; }
+
+  /* BOT ROW */
+  .bots-row { grid-area: bots; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .player-area { border: 1px solid var(--border); background: var(--surface); padding: 14px 18px; }
+  .player-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .player-name { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; color: var(--text-dim); }
+  .player-stack { font-size: 13px; color: var(--text-dim); }
+  .player-bet { font-size: 11px; color: var(--text-dim); }
+  .bet-highlight { color: var(--gold); }
+  .card-row { display: flex; gap: 6px; }
+  .card { width: 38px; height: 54px; background: #1E2535; border: 1px solid #2E3545;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--text-dim); }
+
+  /* CENTER */
+  .center-area { grid-area: center; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px; }
+  .pot-display { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 3px; }
+  .pot-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 2px; }
+  .community-row { display: flex; gap: 8px; align-items: center; }
+  .community-card { width: 44px; height: 62px; background: white; border: 1px solid #ccc;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: bold; color: #c0392b; font-family: serif; }
+  .community-card.empty { background: #1C2130; border: 1px dashed var(--border);
+    color: var(--text-dim); font-size: 11px; font-family: 'IBM Plex Mono', monospace; }
+  .street-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 2px; margin-left: 4px; }
+
+  /* YOU */
+  .you-area { grid-area: you; border: 1px solid var(--gold); background: var(--surface);
+    padding: 14px 18px; }
+  .you-area .player-name { color: var(--gold); }
+  .you-area .player-stack { color: var(--text); }
+  .card.face-up { background: white; border: 1px solid #ccc; }
+  .card-rank { font-family: serif; font-weight: bold; color: #2ecc71; font-size: 22px; }
+  .card-rank.red { color: #e74c3c; }
+  .you-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .your-turn-badge { font-size: 10px; padding: 3px 8px; background: var(--gold);
+    color: var(--bg); font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
+
+  /* ACTIONS */
+  .action-panel { grid-area: actions; border: 1px solid var(--border); background: var(--surface2);
+    padding: 14px 18px; }
+  .action-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 10px; }
+  .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+  .action-btn { padding: 10px 18px; border: 1px solid var(--border); background: transparent;
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text);
+    cursor: pointer; transition: all 0.15s; }
+  .action-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .action-btn.fold:hover { border-color: var(--red); color: var(--red); }
+  .action-btn.primary { border-color: var(--gold); color: var(--gold); }
+
+  /* LOG */
+  .action-log { grid-area: log; border: 1px solid var(--border); background: var(--surface);
+    padding: 12px 16px; font-size: 11px; color: var(--text-dim); }
+  .log-header { font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text-dim); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(37,42,53,0.5); }
+  .log-entry:last-child { border-bottom: none; }
+  .log-hand { color: var(--text-dim); font-size: 10px; opacity: 0.5; margin-right: 4px; }
+  .log-actor { color: var(--blue); }
+  .log-action { color: var(--text); }
+  .log-sep { color: var(--border); font-size: 10px; padding: 3px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">POKER BOT</div>
+    <div class="header-right">
+      <div class="bankroll-group">
+        <div class="bankroll-label">Bankroll</div>
+        <div class="bankroll-val neg">-1.5 BB</div>
+      </div>
+      <select>
+        <option>Leduc (Baseline)</option>
+        <option>Leduc (Collusion)</option>
+        <option>NLHE (Baseline)</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="game-layout">
+    <!-- Bot row -->
+    <div class="bots-row">
+      <div class="player-area">
+        <div class="player-header">
+          <div class="player-name">BTN · P0</div>
+          <div class="player-stack">19.5 BB</div>
+        </div>
+        <div class="player-bet">Bet: <span class="bet-highlight">0.5 BB</span></div>
+        <div class="card-row" style="margin-top:8px">
+          <div class="card">🂠</div>
+        </div>
+      </div>
+      <div class="player-area">
+        <div class="player-header">
+          <div class="player-name">SB · P1</div>
+          <div class="player-stack">19.0 BB</div>
+        </div>
+        <div class="player-bet">Bet: <span class="bet-highlight">1.0 BB</span></div>
+        <div class="card-row" style="margin-top:8px">
+          <div class="card">🂠</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center -->
+    <div class="center-area">
+      <div>
+        <div class="pot-label">Total Pot</div>
+        <div class="pot-display">1.5 BB</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="community-card empty">—</div>
+        <div class="street-label">FLOP PENDING</div>
+      </div>
+    </div>
+
+    <!-- You -->
+    <div class="you-area">
+      <div class="you-meta">
+        <div class="player-name">BB · YOU · P2</div>
+        <div class="your-turn-badge">YOUR TURN</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end">
+        <div>
+          <div class="player-bet">Stack: <span style="color:var(--text)">20.0 BB</span> · Bet: <span class="bet-highlight">0.0 BB</span></div>
+          <div class="card-row" style="margin-top:8px">
+            <div class="card face-up"><span class="card-rank">K♠</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-panel">
+      <div class="action-label">Your Action — Preflop</div>
+      <div class="action-buttons">
+        <button class="action-btn fold">Fold</button>
+        <button class="action-btn">Call 1.0 BB</button>
+        <button class="action-btn">Raise to 2 BB</button>
+        <button class="action-btn">Raise to 3 BB</button>
+        <button class="action-btn primary">All-in 20 BB</button>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="action-log">
+      <div class="log-header">Action Log (last 10)</div>
+      <div class="log-entry"><span class="log-sep">── Hand #2 ──────────────────────────────</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span class="log-actor">BTN</span>: <span class="log-action">Raise to 2 BB</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span class="log-actor">SB</span>: <span class="log-action">Call</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span class="log-actor">YOU</span>: <span class="log-action">Call</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span style="color:var(--text-dim)">Community: Q♣ dealt</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span class="log-actor">SB</span>: <span class="log-action">Check</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span class="log-actor">YOU</span>: <span class="log-action">Check</span></div>
+      <div class="log-entry"><span class="log-hand">H2</span> <span class="log-actor">BTN</span>: <span class="log-action">wins 6.0 BB</span></div>
+      <div class="log-entry"><span class="log-sep">── Hand #3 ──────────────────────────────</span></div>
+      <div class="log-entry"><span class="log-hand">H3</span> <span class="log-actor">BTN</span>: <span class="log-action">Call 1.0 BB</span></div>
+      <div class="log-entry"><span class="log-hand">H3</span> <span class="log-actor">SB</span>: <span class="log-action">Call 0.5 BB</span></div>
+    </div>
+  </div>
+</body>
+</html>

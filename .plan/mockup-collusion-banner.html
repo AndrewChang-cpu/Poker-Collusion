@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Bot — Collusion Banner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D0F14; --surface: #161A23; --surface2: #1C2130;
+    --border: #252A35; --gold: #E8C547; --blue: #4A9EFF;
+    --text: #E0E4EF; --text-dim: #5A6070; --red: #E84747; --red-dim: #3A1515;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh; display: flex; flex-direction: column; }
+
+  header { border-bottom: 1px solid var(--border); padding: 14px 32px;
+    display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--gold); }
+  .header-right { display: flex; align-items: center; gap: 24px; }
+  .bankroll-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .bankroll-val { font-size: 16px; }
+  select { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 6px 12px; }
+
+  /* Dimmed game table behind overlay */
+  .table-bg { flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+    padding: 40px; }
+  .table-dim { position: absolute; inset: 0; background: rgba(13,15,20,0.75); z-index: 1; }
+
+  /* Simplified table glimpse */
+  .game-peek { width: 100%; max-width: 720px; opacity: 0.3; pointer-events: none; }
+  .peek-row { display: flex; justify-content: space-between; margin-bottom: 16px; }
+  .peek-player { border: 1px solid var(--border); background: var(--surface);
+    padding: 16px 20px; width: 48%; font-size: 12px; color: var(--text-dim); }
+  .peek-center { border: 1px solid var(--border); background: var(--surface);
+    padding: 24px; text-align: center; font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+  .peek-you { border: 1px solid var(--border); background: var(--surface);
+    padding: 16px 20px; font-size: 12px; color: var(--text-dim); }
+
+  /* Banner overlay */
+  .banner { position: absolute; z-index: 2; width: 560px;
+    border: 1px solid var(--red); background: var(--bg); }
+  .banner-header { background: var(--red); padding: 14px 24px;
+    font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--bg);
+    display: flex; align-items: center; gap: 10px; }
+  .banner-icon { font-size: 20px; }
+  .banner-body { padding: 28px 28px 24px; }
+  .banner-title { font-family: 'Bebas Neue', sans-serif; font-size: 17px;
+    letter-spacing: 2px; color: var(--text); margin-bottom: 16px; }
+
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .seat-box { border: 1px solid var(--border); padding: 12px; text-align: center; }
+  .seat-box.team { border-color: var(--red); background: var(--red-dim); }
+  .seat-box.you { border-color: var(--gold); }
+  .seat-name { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; margin-bottom: 4px; }
+  .seat-tag { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+  .seat-box.team .seat-name { color: var(--red); }
+  .seat-box.team .seat-tag { color: var(--red); opacity: 0.7; }
+  .seat-box.you .seat-name { color: var(--gold); }
+  .seat-box.you .seat-tag { color: var(--gold); opacity: 0.7; }
+
+  .banner-desc { font-size: 12px; color: var(--text-dim); line-height: 1.7; margin-bottom: 24px; }
+  .banner-desc strong { color: var(--text); }
+
+  .banner-btn { width: 100%; padding: 14px; background: var(--red); border: none;
+    font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 3px;
+    color: white; cursor: pointer; transition: opacity 0.15s; }
+  .banner-btn:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">POKER BOT</div>
+    <div class="header-right">
+      <div>
+        <div class="bankroll-label">Bankroll</div>
+        <div class="bankroll-val" style="color:var(--text-dim)">0.0 BB</div>
+      </div>
+      <select>
+        <option>Leduc (Collusion)</option>
+        <option>Leduc (Baseline)</option>
+        <option>NLHE (Baseline)</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="table-bg">
+    <!-- Dimmed table background -->
+    <div class="game-peek">
+      <div class="peek-row">
+        <div class="peek-player">BTN (Bot) — 19.5 BB</div>
+        <div class="peek-player">SB (Bot) — 19.0 BB</div>
+      </div>
+      <div class="peek-center">Pot: — · Community: —</div>
+      <div class="peek-you">YOU (BB) — 20.0 BB</div>
+    </div>
+    <div class="table-dim"></div>
+
+    <!-- Collusion info banner -->
+    <div class="banner">
+      <div class="banner-header">
+        <span class="banner-icon">⚠</span>
+        COLLUSION MODE
+      </div>
+      <div class="banner-body">
+        <div class="banner-title">BTN AND SB ARE A COORDINATED TEAM</div>
+
+        <div class="setup-grid">
+          <div class="seat-box team">
+            <div class="seat-name">BTN</div>
+            <div class="seat-tag">TEAM</div>
+          </div>
+          <div class="seat-box team">
+            <div class="seat-name">SB</div>
+            <div class="seat-tag">TEAM</div>
+          </div>
+          <div class="seat-box you">
+            <div class="seat-name">BB</div>
+            <div class="seat-tag">YOU</div>
+          </div>
+        </div>
+
+        <div class="banner-desc">
+          The BTN and SB bots were trained together using an <strong>observable signaling</strong>
+          strategy — they optimize for their <strong>combined payoff</strong>, effectively
+          colluding against you (BB).<br><br>
+          Can you detect patterns in their play and exploit the coordination?
+          Your performance is measured in mbb/hand vs. a Nash equilibrium baseline.
+        </div>
+
+        <button class="banner-btn">I UNDERSTAND — START GAME</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

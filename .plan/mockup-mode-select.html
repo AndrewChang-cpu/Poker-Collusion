@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Bot — Mode Select</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D0F14; --surface: #161A23; --surface2: #1C2130;
+    --border: #252A35; --gold: #E8C547; --gold-dim: #8A7020;
+    --blue: #4A9EFF; --text: #E0E4EF; --text-dim: #5A6070; --red: #E84747;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh; display: flex; flex-direction: column; }
+
+  header { border-bottom: 1px solid var(--border); padding: 14px 32px;
+    display: flex; justify-content: space-between; align-items: center; }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 3px; color: var(--gold); }
+  .header-right { display: flex; align-items: center; gap: 24px; }
+  .bankroll-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .bankroll-val { font-size: 16px; color: var(--text-dim); }
+  .mode-badge { background: var(--surface); border: 1px solid var(--border);
+    font-size: 12px; padding: 5px 12px; color: var(--text-dim); }
+
+  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px; }
+
+  .select-container { width: 560px; }
+  .select-title { font-family: 'Bebas Neue', sans-serif; font-size: 36px;
+    letter-spacing: 5px; color: var(--text); margin-bottom: 6px; }
+  .select-sub { font-size: 11px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 36px; }
+
+  .mode-cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
+
+  .mode-card { border: 1px solid var(--border); background: var(--surface);
+    padding: 20px 24px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    display: flex; align-items: flex-start; gap: 18px; }
+  .mode-card:hover { border-color: var(--gold-dim); background: var(--surface2); }
+  .mode-card.selected { border-color: var(--gold); background: var(--surface2); }
+
+  .mode-radio { width: 16px; height: 16px; border: 1.5px solid var(--border);
+    border-radius: 50%; margin-top: 3px; flex-shrink: 0; position: relative; }
+  .mode-card.selected .mode-radio { border-color: var(--gold); }
+  .mode-card.selected .mode-radio::after {
+    content: ''; position: absolute; inset: 3px; background: var(--gold); border-radius: 50%;
+  }
+
+  .mode-info { flex: 1; }
+  .mode-name { font-family: 'Bebas Neue', sans-serif; font-size: 20px;
+    letter-spacing: 2px; color: var(--text); margin-bottom: 4px; }
+  .mode-desc { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+  .mode-tag { display: inline-block; font-size: 10px; padding: 2px 8px; margin-top: 8px;
+    text-transform: uppercase; letter-spacing: 1px; }
+  .tag-baseline { background: #1A2235; color: var(--blue); border: 1px solid #2A3A55; }
+  .tag-collusion { background: #2A1515; color: var(--red); border: 1px solid #4A2020; }
+
+  .start-btn { width: 100%; padding: 16px; background: var(--gold); color: var(--bg);
+    font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 4px;
+    border: none; cursor: pointer; transition: opacity 0.15s; }
+  .start-btn:hover { opacity: 0.9; }
+
+  .model-info { margin-top: 16px; font-size: 10px; color: var(--text-dim);
+    text-align: center; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">POKER BOT</div>
+    <div class="header-right">
+      <div>
+        <div class="bankroll-label">Bankroll</div>
+        <div class="bankroll-val">0.0 BB</div>
+      </div>
+      <div class="mode-badge">SELECT MODE</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="select-container">
+      <div class="select-title">SELECT MODE</div>
+      <div class="select-sub">You play as BB · 20 BB starting stacks · 3-player</div>
+
+      <div class="mode-cards">
+        <div class="mode-card selected" onclick="select(this)">
+          <div class="mode-radio"></div>
+          <div class="mode-info">
+            <div class="mode-name">LEDUC (BASELINE)</div>
+            <div class="mode-desc">3-player Leduc Hold'em. Both bot opponents play a Nash equilibrium self-play strategy. 1 hole card, 1 community card.</div>
+            <span class="mode-tag tag-baseline">SELF-PLAY · leduc_baseline_5000k</span>
+          </div>
+        </div>
+
+        <div class="mode-card" onclick="select(this)">
+          <div class="mode-radio"></div>
+          <div class="mode-info">
+            <div class="mode-name">LEDUC (COLLUSION)</div>
+            <div class="mode-desc">BTN and SB bots are a coordinated team optimizing their shared utility against you (BB). Can you detect and exploit their collusion?</div>
+            <span class="mode-tag tag-collusion">OBSERVABLE SIGNALING · leduc_obs_signal_1m</span>
+          </div>
+        </div>
+
+        <div class="mode-card" onclick="select(this)">
+          <div class="mode-radio"></div>
+          <div class="mode-info">
+            <div class="mode-name">NLHE (BASELINE)</div>
+            <div class="mode-desc">No-Limit Texas Hold'em, 20 BB stacks. Both bots play a self-play blueprint strategy. 2 hole cards, up to 5 community cards.</div>
+            <span class="mode-tag tag-baseline">SELF-PLAY · blueprint_v4_21600</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="start-btn">START GAME</button>
+      <div class="model-info">YOU ARE ALWAYS BB (P2) · STACKS RESET EACH HAND</div>
+    </div>
+  </main>
+
+  <script>
+    function select(card) {
+      document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+    }
+  </script>
+</body>
+</html>
