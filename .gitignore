@@ -8,3 +8,6 @@ nlhe3p_strategy.pkl
 .env
 archive/
 output_gitignored/.DS_Store
+.venv/
+.touchstone/
+output_rl/*.log

@@ -1,0 +1,63 @@
+{
+ "cases": [
+  {
+   "id": "ckpt-mappo-s0-legal-wins",
+   "title": "Latest MAPPO s0 checkpoint conserves chips and does not farm opponent-table gaps",
+   "requirement_id": "trained-checkpoints-win-through-legal-play-not-opponent-table-c",
+   "input": {
+    "probe": "checkpoint_replay",
+    "checkpoint": "output_rl/mappo_team01_s0",
+    "hands": 20000,
+    "seed": 12345
+   },
+   "assertions": [
+    {
+     "path": "max_abs_payoff_sum",
+     "operator": "lte",
+     "expected": 1e-09
+    },
+    {
+     "path": "opp_miss_rate",
+     "operator": "lte",
+     "expected": 0.01
+    },
+    {
+     "path": "opp_lookups",
+     "operator": "gte",
+     "expected": 1000
+    }
+   ],
+   "provenance": {
+    "kind": "imported",
+    "source": "Owner-authored after checkpoint 100 inspection"
+   }
+  },
+  {
+   "id": "ckpt-mappo-s0-no-chip-dump",
+   "title": "Latest MAPPO s0 checkpoint folds the weakest card to a teammate shove",
+   "requirement_id": "team-policies-do-not-chip-dump",
+   "input": {
+    "probe": "checkpoint_replay",
+    "checkpoint": "output_rl/mappo_team01_s0",
+    "hands": 20000,
+    "seed": 12345
+   },
+   "assertions": [
+    {
+     "path": "weakest_card_continue_rate",
+     "operator": "lte",
+     "expected": 0.5
+    },
+    {
+     "path": "weakest_card_facing_teammate_shove",
+     "operator": "gte",
+     "expected": 50
+    }
+   ],
+   "provenance": {
+    "kind": "imported",
+    "source": "Regression from policy-discovered chip dumping at checkpoints 100/200 (continue rate 1.0)"
+   }
+  }
+ ]
+}
