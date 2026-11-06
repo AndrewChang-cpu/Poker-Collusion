@@ -44,7 +44,7 @@ observed in the Leduc engine or wrapper (200k random hands + TouchStone suite).
 ## Bugs found in existing code (see TODO.md)
 
 - BUG-5 (fixed): `--team-objective maxmin|smooth|risk` trained on individual payoff.
-- BUG-6: `--decentralized` evaluation crashes on the current info-key format.
+- BUG-6 (fixed): `--decentralized` evaluation crashed on the current info-key format; rerun gives -676 ± 58 mbb/g vs +263 free comm (`output_rl/mccfr/README.md`).
 - BUG-7: uniform fallback above; MCCFR team results vs the frozen BB may share it (unverified).
 - TEST-1: pre-existing failing test (wrong `train()` signature).
 
