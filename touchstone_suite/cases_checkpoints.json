@@ -1,0 +1,68 @@
+{
+ "cases": [
+  {
+   "id": "ckpt-current-legal-wins",
+   "title": "Latest checkpoint of the run to ship (output_rl/current) conserves chips and does not farm opponent-table gaps",
+   "requirement_id": "trained-checkpoints-win-through-legal-play-not-opponent-table-c",
+   "input": {
+    "probe": "checkpoint_replay",
+    "checkpoint": "output_rl/current",
+    "hands": 20000,
+    "seed": 12345
+   },
+   "assertions": [
+    {
+     "path": "max_abs_payoff_sum",
+     "operator": "lte",
+     "expected": 1e-09
+    },
+    {
+     "path": "ev_share_from_fallback_hands",
+     "operator": "lte",
+     "expected": 0.1
+    },
+    {
+     "path": "opp_fallback",
+     "operator": "eq",
+     "expected": "context"
+    },
+    {
+     "path": "opp_lookups",
+     "operator": "gte",
+     "expected": 1000
+    }
+   ],
+   "provenance": {
+    "kind": "imported",
+    "source": "Owner-authored; edited after checkpoint 300 drew 40% of team EV from opponent-fallback hands"
+   }
+  },
+  {
+   "id": "ckpt-current-no-chip-dump",
+   "title": "Latest checkpoint of the run to ship (output_rl/current) folds the weakest card to a teammate shove",
+   "requirement_id": "team-policies-do-not-chip-dump",
+   "input": {
+    "probe": "checkpoint_replay",
+    "checkpoint": "output_rl/current",
+    "hands": 20000,
+    "seed": 12345
+   },
+   "assertions": [
+    {
+     "path": "weakest_card_continue_rate",
+     "operator": "lte",
+     "expected": 0.5
+    },
+    {
+     "path": "weakest_card_facing_teammate_shove",
+     "operator": "gte",
+     "expected": 50
+    }
+   ],
+   "provenance": {
+    "kind": "imported",
+    "source": "Regression from policy-discovered chip dumping at checkpoints 100/200 (continue rate 1.0)"
+   }
+  }
+ ]
+}

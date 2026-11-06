@@ -6,8 +6,9 @@ At inference, the player does not know their teammate's card rank. We average
 the centralized strategy over all possible teammate ranks, weighted by the
 card-removal prior P(teammate_rank | my_rank, community_rank).
 
-Full-comm key format:  (round_idx, my_rank, teammate_rank, community_rank, history)
-Standard key format:   (round_idx, my_rank, -1,            community_rank, history)
+Keys come from abstraction/info_set.get_info_key:
+Standard:  preflop (0, (my_rank,), history); flop (1, (my_rank * 4 + board,), history)
+Full-comm: preflop (0, (my_rank, (mate_rank,)), history); flop (1, (my_rank, (mate_rank,), board), history)
 """
 
 from __future__ import annotations
@@ -40,10 +41,11 @@ class CentralizedToDecentralizedPolicy:
         self, standard_key: tuple, legal_actions: List[int]
     ) -> np.ndarray:
         """
-        standard_key = (round_idx, my_rank, community_rank, history)
+        standard_key = (round_idx, (card_bucket,), history); see module docstring.
         Returns probability distribution over legal_actions.
         """
-        round_idx, my_rank, community_rank, history = standard_key
+        round_idx, (bucket,), history = standard_key
+        my_rank, community_rank = (bucket, -1) if round_idx == 0 else divmod(bucket, _NUM_RANKS)
         prior = self._prior(my_rank, community_rank)
 
         weighted = np.zeros(len(legal_actions))
@@ -53,8 +55,8 @@ class CentralizedToDecentralizedPolicy:
             w = prior[r]
             if w <= 0.0:
                 continue
-            full_key = (round_idx, my_rank, r, community_rank, history)
-            strat = self.trainer.get_average_strategy(full_key, legal_actions)
+            card = (my_rank, (r,)) if round_idx == 0 else (my_rank, (r,), community_rank)
+            strat = self.trainer.get_average_strategy((round_idx, card, history), legal_actions)
             if strat is None:
                 strat = np.ones(len(legal_actions)) / len(legal_actions)
             weighted += w * strat

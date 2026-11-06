@@ -1,0 +1,21 @@
+{
+  "hands_per_update": 4096,
+  "updates": 1000,
+  "epochs": 4,
+  "minibatch": 2048,
+  "lr": 0.0003,
+  "clip": 0.2,
+  "ent_coef": 0.01,
+  "vf_coef": 0.5,
+  "max_grad_norm": 0.5,
+  "hidden": 128,
+  "reward_scale": 0.1,
+  "checkpoint_every": 100,
+  "eval_hands": 20000,
+  "seed": 0,
+  "learner_seats": [
+    0,
+    1
+  ],
+  "team_objective": "individual"
+}

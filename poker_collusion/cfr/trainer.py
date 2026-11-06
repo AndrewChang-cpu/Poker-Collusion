@@ -5,6 +5,7 @@ Fixed: Restored _should_prune helper for unit test compatibility.
 
 from __future__ import annotations
 from typing import Any, List, Optional, Set
+import math
 import os
 import numpy as np
 from tqdm import tqdm
@@ -15,7 +16,9 @@ from poker_collusion.config import (
     LOG_INTERVAL,
     PRUNE_THRESHOLD,
     PRUNE_WARM_UP_ITERATIONS,
-    PRUNE_SKIP_PROBABILITY
+    PRUNE_SKIP_PROBABILITY,
+    RISK_OFFSET,
+    SMOOTH_LAMBDA,
 )
 
 class CFRTrainer:
@@ -190,7 +193,16 @@ class CFRTrainer:
         if not self.team_seats or traverser not in self.team_seats:
             return payoffs[traverser]
         team_payoffs = [payoffs[s] for s in self.team_seats]
-        return sum(team_payoffs) if self.team_objective == "utilitarian" else payoffs[traverser]
+        obj = self.team_objective
+        if obj == "utilitarian":
+            return sum(team_payoffs)
+        if obj == "maxmin":
+            return min(team_payoffs)
+        if obj == "smooth":
+            return sum(team_payoffs) + SMOOTH_LAMBDA * min(team_payoffs)
+        if obj == "risk":
+            return sum(math.log(RISK_OFFSET + u) for u in team_payoffs)
+        raise ValueError(f"Unknown team objective: {obj}")
 
     def save(self, path):
         import pickle
