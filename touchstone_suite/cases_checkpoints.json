@@ -1,12 +1,12 @@
 {
  "cases": [
   {
-   "id": "ckpt-mappo-s0-legal-wins",
-   "title": "Latest MAPPO s0 checkpoint conserves chips and does not farm opponent-table gaps",
+   "id": "ckpt-current-legal-wins",
+   "title": "Latest checkpoint of the run to ship (output_rl/current) conserves chips and does not farm opponent-table gaps",
    "requirement_id": "trained-checkpoints-win-through-legal-play-not-opponent-table-c",
    "input": {
     "probe": "checkpoint_replay",
-    "checkpoint": "output_rl/mappo_team01_s0",
+    "checkpoint": "output_rl/current",
     "hands": 20000,
     "seed": 12345
    },
@@ -33,12 +33,12 @@
    }
   },
   {
-   "id": "ckpt-mappo-s0-no-chip-dump",
-   "title": "Latest MAPPO s0 checkpoint folds the weakest card to a teammate shove",
+   "id": "ckpt-current-no-chip-dump",
+   "title": "Latest checkpoint of the run to ship (output_rl/current) folds the weakest card to a teammate shove",
    "requirement_id": "team-policies-do-not-chip-dump",
    "input": {
     "probe": "checkpoint_replay",
-    "checkpoint": "output_rl/mappo_team01_s0",
+    "checkpoint": "output_rl/current",
     "hands": 20000,
     "seed": 12345
    },

@@ -16,7 +16,7 @@ from poker_collusion.env import game_logic as g
 from poker_collusion.env.game_state import deal_new_hand, get_payoffs
 from poker_collusion.rl.env import LeducTeamEnv, global_state, observe
 
-DEFAULT_OPPONENT = "models/leduc_baseline_5000k_avg.pkl"
+DEFAULT_OPPONENT = "models/leduc_baseline_5000k_ctx.pkl"  # compact_checkpoint output with fallback table
 
 
 def _uniform(state, seat, legal):
@@ -27,7 +27,7 @@ def _opponent(inp: Dict):
     if inp.get("opponent", "uniform") == "uniform":
         return _uniform
     from poker_collusion.rl.frozen import FrozenPolicy
-    return FrozenPolicy(inp.get("opponent_path", DEFAULT_OPPONENT))
+    return FrozenPolicy(inp.get("opponent_path", DEFAULT_OPPONENT), inp.get("opponent_fallback", "context"))
 
 
 def resolve_checkpoint(path: str) -> str:
@@ -192,7 +192,9 @@ def checkpoint_replay(inp: Dict) -> Dict:
     mate_raise_vs_mate, decisions, fold_to_mate = 0, 0, 0
     weakest_vs_mate_shove, weakest_continue = 0, 0  # chip-dump signature
     opp_folds = 0
+    miss_hand = np.zeros(n, dtype=bool)
     for h in range(n):
+        m0 = opp.misses
         step = env.reset()
         while not step["done"]:
             a = actor.act(step["obs"], step["mask"])[0]
@@ -208,11 +210,14 @@ def checkpoint_replay(inp: Dict) -> Dict:
                     weakest_continue += a != 0
             step = env.step(a)
         pay[h] = step["payoffs"]
+        miss_hand[h] = opp.misses > m0
         opp_folds += not any(env.state.active[q] for q in range(NUM_PLAYERS) if q not in team)
     team_bb = pay[:, list(team)].sum(1)
     return {"checkpoint_resolved": ckpt, "hands": n, "team_bb": float(team_bb.mean()), "team_se": float(team_bb.std() / np.sqrt(n)),
             "seat_bb": [float(x) for x in pay.mean(0)], "max_abs_payoff_sum": float(np.abs(pay.sum(1)).max()),
             "opp_miss_rate": opp.misses / max(1, opp.lookups), "opp_lookups": opp.lookups,
+            "opp_fallback": opp.fallback_mode, "fallback_hand_rate": float(miss_hand.mean()),
+            "ev_share_from_fallback_hands": float(team_bb[miss_hand].sum() / team_bb.sum()) if team_bb.sum() > 0 else 0.0,
             "opp_fold_rate": opp_folds / n, "reraise_vs_teammate": mate_raise_vs_mate,
             "fold_to_teammate_raise": fold_to_mate, "learner_decisions": decisions,
             "weakest_card_facing_teammate_shove": weakest_vs_mate_shove,
