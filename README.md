@@ -4,6 +4,17 @@
 
 This repo also includes a Pluribus-style **online real-time search** agent (`PluribusBot`) that plays **blueprint on preflop** and uses a **depth-limited subgame CFR solver** postflop.
 
+## Deep RL (MAPPO) team policy
+
+MAPPO team vs frozen MCCFR BB, with a TouchStone safety suite: `docs/RL_ALGORITHM.md` (choice + citations), `docs/RL_RESULTS.md` (runs, hacks found).
+
+```bash
+uv venv --python 3.11 .venv && uv pip install --python .venv numpy tqdm pytest torch scikit-learn
+PYTHONPATH=. .venv/bin/python scripts/train_ppo.py --opponent models/leduc_baseline_5000k.pkl --compact \
+    --out output_rl/my_run --team-objective smooth --updates 1000
+touchstone check touchstone_suite --timeout 300   # needs models/leduc_baseline_5000k_ctx.pkl (compact output)
+```
+
 ## Project Structure
 
 ```

@@ -1,7 +1,7 @@
 """
 Train a MAPPO team (default BTN+SB) against a frozen MCCFR opponent.
 
-  python scripts/train_ppo.py --opponent models/leduc_baseline_5000k_avg.pkl \
+  python scripts/train_ppo.py --opponent models/leduc_baseline_5000k_ctx.pkl \
       --out output_rl/mappo_team01 --updates 500
 """
 
@@ -19,7 +19,7 @@ from poker_collusion.rl.ppo import PPOConfig, train
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--opponent", required=True, help="compact avg-strategy pickle (or full MCCFR pkl with --compact)")
-    ap.add_argument("--compact", action="store_true", help="compact --opponent first (writes <name>_avg.pkl)")
+    ap.add_argument("--compact", action="store_true", help="compact --opponent first (writes <name>_ctx.pkl)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--opponent-fallback", default="context", choices=["context", "uniform"],
                     help="unseen-infoset policy; 'context' needs a pickle built by this branch's compact_checkpoint")
@@ -31,7 +31,7 @@ def main() -> None:
 
     opp_path = args.opponent
     if args.compact:
-        opp_path = os.path.splitext(args.opponent)[0] + "_avg.pkl"
+        opp_path = os.path.splitext(args.opponent)[0] + "_ctx.pkl"
         compact_checkpoint(args.opponent, opp_path)
     seats = [int(s) for s in args.team_seats.split(",")]
     cfg = PPOConfig(**{k: getattr(args, k) for k in vars(PPOConfig())})
