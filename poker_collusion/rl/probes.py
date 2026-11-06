@@ -156,7 +156,8 @@ def terminal_delivery(inp: Dict) -> Dict:
         if last_actor not in env.learner_seats:
             ended_by_opponent += 1
         team_sum = sum(step["payoffs"][q] for q in env.learner_seats)
-        mismatched += any(abs(step["rewards"].get(q, float("nan")) - team_sum) > 1e-9 for q in set(seats))
+        expected = env.team_reward(step["payoffs"], seats[0]) if seats else team_sum
+        mismatched += any(abs(step["rewards"].get(q, float("nan")) - expected) > 1e-9 for q in set(seats))
     return {"ended_by_opponent": ended_by_opponent, "reward_mismatches": mismatched}
 
 

@@ -22,7 +22,7 @@ def main() -> None:
     ap.add_argument("--compact", action="store_true", help="compact --opponent first (writes <name>_avg.pkl)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--team-seats", default="0,1")
-    ap.add_argument("--team-objective", default="utilitarian", choices=["utilitarian", "individual"])
+    ap.add_argument("--team-objective", default="utilitarian", choices=["utilitarian", "smooth", "individual"])
     for name, default in vars(PPOConfig()).items():
         ap.add_argument(f"--{name.replace('_', '-')}", type=type(default), default=default)
     args = ap.parse_args()

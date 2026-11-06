@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 
 import numpy as np
 
-from poker_collusion.config import NUM_ACTIONS, NUM_PLAYERS, STARTING_STACK_BB
+from poker_collusion.config import NUM_ACTIONS, NUM_PLAYERS, SMOOTH_LAMBDA, STARTING_STACK_BB
 from poker_collusion.env import game_logic as g
 from poker_collusion.env.game_state import DEAL, deal_new_hand, get_payoffs
 
@@ -83,14 +83,15 @@ class LeducTeamEnv:
     the next learner decision or a terminal result.
 
     Reward: at terminal, each learner seat gets `team_reward(payoffs)`
-    (utilitarian team sum by default), 0 before. Payoffs are in BB.
+    (utilitarian team sum by default; `smooth` adds SMOOTH_LAMBDA * min),
+    0 before. Payoffs are in BB.
     """
 
     def __init__(self, learner_seats: Sequence[int], opponent: OpponentFn,
                  team_objective: str = "utilitarian"):
         self.learner_seats = tuple(sorted(learner_seats))
         self.opponent = opponent
-        if team_objective not in ("utilitarian", "individual"):
+        if team_objective not in ("utilitarian", "smooth", "individual"):
             raise ValueError(f"unsupported team_objective {team_objective!r}")
         self.team_objective = team_objective
         self.state = None
@@ -98,7 +99,10 @@ class LeducTeamEnv:
     def team_reward(self, payoffs: Sequence[float], seat: int) -> float:
         if self.team_objective == "individual":
             return float(payoffs[seat])
-        return float(sum(payoffs[s] for s in self.learner_seats))
+        team = [payoffs[s] for s in self.learner_seats]
+        if self.team_objective == "smooth":  # penalizes sacrificing one teammate (chip dumping)
+            return float(sum(team) + SMOOTH_LAMBDA * min(team))
+        return float(sum(team))
 
     def reset(self, state=None) -> Dict:
         self.state = state if state is not None else deal_new_hand()
